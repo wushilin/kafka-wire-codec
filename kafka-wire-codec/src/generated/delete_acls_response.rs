@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,7 +6,7 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DeleteAclsFilterResult {
     /// The error code, or 0 if the filter succeeded.
     pub error_code: i16,
@@ -14,7 +14,9 @@ pub struct DeleteAclsFilterResult {
     pub error_message: Option<StrBytes>,
     /// The ACLs which matched this filter.
     pub matching_acls: Vec<DeleteAclsMatchingAcl>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -86,7 +88,7 @@ impl DeleteAclsFilterResult {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DeleteAclsMatchingAcl {
     /// The deletion error code, or 0 if the deletion succeeded.
     pub error_code: i16,
@@ -106,7 +108,9 @@ pub struct DeleteAclsMatchingAcl {
     pub operation: i8,
     /// The ACL permission type.
     pub permission_type: i8,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -227,13 +231,15 @@ impl DeleteAclsMatchingAcl {
 }
 
 /// Valid versions: 1-3.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct DeleteAclsResponse {
     /// The duration in milliseconds for which the request was throttled due to a quota violation, or zero if the request did not violate any quota.
     pub throttle_time_ms: i32,
     /// The results for each filter.
     pub filter_results: Vec<DeleteAclsFilterResult>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

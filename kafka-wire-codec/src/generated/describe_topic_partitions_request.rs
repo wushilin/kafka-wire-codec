@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,11 +6,13 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct TopicRequest {
     /// The topic name.
     pub name: TopicName,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -41,13 +43,15 @@ impl TopicRequest {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Cursor {
     /// The name for the first topic to process.
     pub topic_name: TopicName,
     /// The partition index to start with.
     pub partition_index: i32,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -88,7 +92,7 @@ impl Cursor {
 }
 
 /// Valid versions: 0-0.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DescribeTopicPartitionsRequest {
     /// The topics to fetch details for.
     pub topics: Vec<TopicRequest>,
@@ -96,7 +100,9 @@ pub struct DescribeTopicPartitionsRequest {
     pub response_partition_limit: i32,
     /// The first topic and partition index to fetch details for.
     pub cursor: Option<Cursor>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

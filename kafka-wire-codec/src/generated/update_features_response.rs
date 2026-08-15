@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,7 +6,7 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UpdatableFeatureResult {
     /// The name of the finalized feature.
     pub feature: StrBytes,
@@ -14,7 +14,9 @@ pub struct UpdatableFeatureResult {
     pub error_code: i16,
     /// The feature update error, or `null` if the feature update succeeded.
     pub error_message: Option<StrBytes>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -75,7 +77,7 @@ impl UpdatableFeatureResult {
 }
 
 /// Valid versions: 0-2.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UpdateFeaturesResponse {
     /// The duration in milliseconds for which the request was throttled due to a quota violation, or zero if the request did not violate any quota.
     pub throttle_time_ms: i32,
@@ -85,7 +87,9 @@ pub struct UpdateFeaturesResponse {
     pub error_message: Option<StrBytes>,
     /// Results for each feature update.
     pub results: Vec<UpdatableFeatureResult>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,13 +6,15 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct WriteStateData {
     /// The topic identifier.
     pub topic_id: Uuid,
     /// The data for the partitions.
     pub partitions: Vec<PartitionData>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -64,7 +66,7 @@ impl WriteStateData {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PartitionData {
     /// The partition index.
     pub partition: i32,
@@ -78,7 +80,9 @@ pub struct PartitionData {
     pub delivery_complete_count: i32,
     /// The state batches for the share-partition.
     pub state_batches: Vec<StateBatch>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -180,7 +184,7 @@ impl PartitionData {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct StateBatch {
     /// The first offset of this state batch.
     pub first_offset: i64,
@@ -190,7 +194,9 @@ pub struct StateBatch {
     pub delivery_state: i8,
     /// The delivery count.
     pub delivery_count: i16,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -249,13 +255,15 @@ impl StateBatch {
 }
 
 /// Valid versions: 0-1.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct WriteShareGroupStateRequest {
     /// The group identifier.
     pub group_id: StrBytes,
     /// The data for the topics.
     pub topics: Vec<WriteStateData>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -7,7 +7,7 @@ use crate::error::DecodeError;
 use crate::types::*;
 
 /// Valid versions: 0-0.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EnvelopeRequest {
     /// The embedded request header and data.
     pub request_data: Bytes,
@@ -15,7 +15,9 @@ pub struct EnvelopeRequest {
     pub request_principal: Option<Bytes>,
     /// The original client's address in bytes.
     pub client_host_address: Bytes,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,7 +6,7 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DescribeLogDirsResult {
     /// The error code, or 0 if there was no error.
     pub error_code: i16,
@@ -20,7 +20,9 @@ pub struct DescribeLogDirsResult {
     pub usable_bytes: i64,
     /// True if this log directory is cordoned.
     pub is_cordoned: bool,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -122,13 +124,15 @@ impl DescribeLogDirsResult {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct DescribeLogDirsTopic {
     /// The topic name.
     pub name: TopicName,
     /// The partitions.
     pub partitions: Vec<DescribeLogDirsPartition>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -180,7 +184,7 @@ impl DescribeLogDirsTopic {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct DescribeLogDirsPartition {
     /// The partition index.
     pub partition_index: i32,
@@ -190,7 +194,9 @@ pub struct DescribeLogDirsPartition {
     pub offset_lag: i64,
     /// True if this log is created by AlterReplicaLogDirsRequest and will replace the current log of the replica in the future.
     pub is_future_key: bool,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -249,7 +255,7 @@ impl DescribeLogDirsPartition {
 }
 
 /// Valid versions: 1-5.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct DescribeLogDirsResponse {
     /// The duration in milliseconds for which the request was throttled due to a quota violation, or zero if the request did not violate any quota.
     pub throttle_time_ms: i32,
@@ -257,7 +263,9 @@ pub struct DescribeLogDirsResponse {
     pub error_code: i16,
     /// The log directories.
     pub results: Vec<DescribeLogDirsResult>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

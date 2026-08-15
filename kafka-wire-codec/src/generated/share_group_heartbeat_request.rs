@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -7,7 +7,7 @@ use crate::error::DecodeError;
 use crate::types::*;
 
 /// Valid versions: 1-1.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ShareGroupHeartbeatRequest {
     /// The group identifier.
     pub group_id: GroupId,
@@ -19,7 +19,9 @@ pub struct ShareGroupHeartbeatRequest {
     pub rack_id: Option<StrBytes>,
     /// null if it didn't change since the last heartbeat; the subscribed topic names otherwise.
     pub subscribed_topic_names: Option<Vec<TopicName>>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

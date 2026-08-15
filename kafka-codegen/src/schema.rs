@@ -30,9 +30,12 @@ pub struct FieldSpec {
     pub entity_type: Option<String>,
     /// Tag number for flexible-version tagged fields. When present, the field
     /// lives in the trailing tagged-fields section, not inline. Kafka encodes
-    /// this as a JSON string (e.g. "0"), so accept any JSON value — only its
-    /// presence matters to the generator.
+    /// this as a JSON number or string (e.g. "0"), so accept any JSON value.
     pub tag: Option<serde_json::Value>,
+    /// Versions at which the field is encoded in the tagged section (always
+    /// open-ended, e.g. "12+"). Only meaningful when `tag` is present.
+    #[serde(default)]
+    pub tagged_versions: String,
     #[serde(default)]
     pub fields: Vec<FieldSpec>,
     #[serde(default)]

@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,13 +6,15 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct JoinGroupRequestProtocol {
     /// The protocol name.
     pub name: StrBytes,
     /// The protocol metadata.
     pub metadata: Bytes,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -53,7 +55,7 @@ impl JoinGroupRequestProtocol {
 }
 
 /// Valid versions: 0-9.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct JoinGroupRequest {
     /// The group identifier.
     pub group_id: GroupId,
@@ -71,7 +73,9 @@ pub struct JoinGroupRequest {
     pub protocols: Vec<JoinGroupRequestProtocol>,
     /// The reason why the member (re-)joins the group.
     pub reason: Option<StrBytes>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,7 +6,7 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DescribeUserScramCredentialsResult {
     /// The user name.
     pub user: StrBytes,
@@ -16,7 +16,9 @@ pub struct DescribeUserScramCredentialsResult {
     pub error_message: Option<StrBytes>,
     /// The mechanism and related information associated with the user's SCRAM credentials.
     pub credential_infos: Vec<CredentialInfo>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -98,13 +100,15 @@ impl DescribeUserScramCredentialsResult {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct CredentialInfo {
     /// The SCRAM mechanism.
     pub mechanism: i8,
     /// The number of iterations used in the SCRAM credential.
     pub iterations: i32,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -145,7 +149,7 @@ impl CredentialInfo {
 }
 
 /// Valid versions: 0-0.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DescribeUserScramCredentialsResponse {
     /// The duration in milliseconds for which the request was throttled due to a quota violation, or zero if the request did not violate any quota.
     pub throttle_time_ms: i32,
@@ -155,7 +159,9 @@ pub struct DescribeUserScramCredentialsResponse {
     pub error_message: Option<StrBytes>,
     /// The results for descriptions, one per user.
     pub results: Vec<DescribeUserScramCredentialsResult>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

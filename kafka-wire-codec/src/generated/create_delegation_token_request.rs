@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,13 +6,15 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct CreatableRenewers {
     /// The type of the Kafka principal.
     pub principal_type: StrBytes,
     /// The name of the Kafka principal.
     pub principal_name: StrBytes,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -53,7 +55,7 @@ impl CreatableRenewers {
 }
 
 /// Valid versions: 1-3.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CreateDelegationTokenRequest {
     /// The principal type of the owner of the token. If it's null it defaults to the token request principal.
     pub owner_principal_type: Option<StrBytes>,
@@ -63,7 +65,9 @@ pub struct CreateDelegationTokenRequest {
     pub renewers: Vec<CreatableRenewers>,
     /// The maximum lifetime of the token in milliseconds, or -1 to use the server side default.
     pub max_lifetime_ms: i64,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

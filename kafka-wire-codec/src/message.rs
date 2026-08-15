@@ -8,6 +8,17 @@ use bytes::{Bytes, BytesMut};
 /// flushed to a socket in a single write. See [`crate::frame`] for framing
 /// helpers that prepend the 4-byte length and write to sync/async streams.
 ///
+/// # Version-range contract
+///
+/// Decoding ([`Self::read`]) is fed by the network, so an out-of-range version
+/// is a runtime condition and returns `Err(DecodeError::UnsupportedVersion)`.
+/// Encoding ([`Self::wire_size`] / [`Self::write`]) is driven by the caller,
+/// so an out-of-range version there is a **programmer error and panics** —
+/// there is no partial frame to salvage once sizing and writing disagree.
+/// Callers negotiating versions dynamically should gate on
+/// [`Self::supports_version`] (or the `VALID_MIN/MAX_VERSION` constants)
+/// before encoding.
+///
 /// `wire_size`/`write` forward to the inherent `encoded_size`/`encode` methods on
 /// each generated type (kept under different names to avoid a self-referential
 /// method-resolution clash).
@@ -25,10 +36,19 @@ pub trait Encodable: Sized {
     /// message; `i16::MAX` if the message is never flexible.
     const FLEXIBLE_MIN_VERSION: i16;
 
+    /// Whether `version` can be encoded/decoded by this message. Encoding at
+    /// an unsupported version panics — check this first when the version is
+    /// not one you just decoded.
+    fn supports_version(version: i16) -> bool {
+        (Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version)
+    }
+
     /// Exact encoded size in bytes at `version` (first pass).
+    /// Panics if `version` is out of range — see the trait docs.
     fn wire_size(&self, version: i16) -> usize;
 
     /// Encode the body into `buf` at `version` (second pass).
+    /// Panics if `version` is out of range — see the trait docs.
     fn write(&self, version: i16, buf: &mut BytesMut);
 
     /// Decode a body from `buf` at `version`, consuming the bytes read.

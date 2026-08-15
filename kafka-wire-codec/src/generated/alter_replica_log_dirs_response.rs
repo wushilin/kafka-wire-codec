@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,13 +6,15 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AlterReplicaLogDirTopicResult {
     /// The name of the topic.
     pub topic_name: TopicName,
     /// The results for each partition.
     pub partitions: Vec<AlterReplicaLogDirPartitionResult>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -64,13 +66,15 @@ impl AlterReplicaLogDirTopicResult {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AlterReplicaLogDirPartitionResult {
     /// The partition index.
     pub partition_index: i32,
     /// The error code, or 0 if there was no error.
     pub error_code: i16,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -111,13 +115,15 @@ impl AlterReplicaLogDirPartitionResult {
 }
 
 /// Valid versions: 1-2.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AlterReplicaLogDirsResponse {
     /// Duration in milliseconds for which the request was throttled due to a quota violation, or zero if the request did not violate any quota.
     pub throttle_time_ms: i32,
     /// The results for each topic.
     pub results: Vec<AlterReplicaLogDirTopicResult>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

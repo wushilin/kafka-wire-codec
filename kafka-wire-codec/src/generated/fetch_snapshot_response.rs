@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,13 +6,15 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct TopicSnapshot {
     /// The name of the topic to fetch.
     pub name: TopicName,
     /// The partitions to fetch.
     pub partitions: Vec<PartitionSnapshot>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -64,7 +66,7 @@ impl TopicSnapshot {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct PartitionSnapshot {
     /// The partition index.
     pub index: i32,
@@ -72,13 +74,19 @@ pub struct PartitionSnapshot {
     pub error_code: i16,
     /// The snapshot endOffset and epoch fetched.
     pub snapshot_id: SnapshotId,
+    /// The leader of the partition at the time of the snapshot.
+    /// Tagged field (tag 0, versions 0+): encoded only when it differs from
+    /// the schema default; an omitted tag decodes to that default.
+    pub current_leader: LeaderIdAndEpoch,
     /// The total size of the snapshot.
     pub size: i64,
     /// The starting byte position within the snapshot included in the Bytes field.
     pub position: i64,
     /// Snapshot data in records format which may not be aligned on an offset boundary.
     pub unaligned_records: Bytes,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -103,7 +111,18 @@ impl PartitionSnapshot {
         {
             size += compact_bytes_size(&self.unaligned_records);
         }
-        size += tagged_fields_size(&self.tagged_fields);
+        {
+            let mut num_tagged = self.tagged_fields.len();
+            let mut known_tagged_size = 0usize;
+            if self.current_leader != LeaderIdAndEpoch::default() {
+                num_tagged += 1;
+                let data_len = { let mut size = 0usize;
+            size += self.current_leader.encoded_size(version);
+                size };
+                known_tagged_size += uvarint_size(0u64) + uvarint_size(data_len as u64) + data_len;
+            }
+            size += uvarint_size(num_tagged as u64) + known_tagged_size + raw_tagged_fields_size(&self.tagged_fields);
+        }
         size
     }
 
@@ -126,7 +145,20 @@ impl PartitionSnapshot {
         {
             put_compact_bytes_zc(buf, &self.unaligned_records);
         }
-        put_tagged_fields(buf, &self.tagged_fields);
+        {
+            let mut num_tagged = self.tagged_fields.len();
+            if self.current_leader != LeaderIdAndEpoch::default() { num_tagged += 1; }
+            put_uvarint(buf, num_tagged as u64);
+            if self.current_leader != LeaderIdAndEpoch::default() {
+                put_uvarint(buf, 0u64);
+                let data_len = { let mut size = 0usize;
+            size += self.current_leader.encoded_size(version);
+                size };
+                put_uvarint(buf, data_len as u64);
+            self.current_leader.encode(version, buf);
+            }
+            for (t, d) in &self.tagged_fields { put_raw_tagged_field(buf, *t, d); }
+        }
     }
 
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
@@ -149,18 +181,35 @@ impl PartitionSnapshot {
         {
             msg.unaligned_records = (get_compact_bytes(buf)?).ok_or(DecodeError::NullForNonNullable)?;
         }
-        msg.tagged_fields = get_tagged_fields(buf)?;
+        {
+            let count = get_uvarint32(buf)? as usize;
+            let mut raw: Vec<(u32, Bytes)> = Vec::with_capacity(count.min(buf.len() / 2));
+            for _ in 0..count {
+                let (tag, mut data) = get_tagged_field(buf)?;
+                match tag {
+                    0 => {
+                        let buf = &mut data;
+            msg.current_leader = LeaderIdAndEpoch::decode(version, buf)?;
+                        if !buf.is_empty() { return Err(DecodeError::TrailingBytes { remaining: buf.len() }); }
+                    }
+                    _ => raw.push((tag, data)),
+                }
+            }
+            msg.tagged_fields = raw;
+        }
         Ok(msg)
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct SnapshotId {
     /// The snapshot end offset.
     pub end_offset: i64,
     /// The snapshot epoch.
     pub epoch: i32,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -200,13 +249,15 @@ impl SnapshotId {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct LeaderIdAndEpoch {
     /// The ID of the current leader or -1 if the leader is unknown.
     pub leader_id: BrokerId,
     /// The latest known leader epoch.
     pub leader_epoch: i32,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -246,7 +297,7 @@ impl LeaderIdAndEpoch {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct NodeEndpoint {
     /// The ID of the associated node.
     pub node_id: BrokerId,
@@ -254,7 +305,9 @@ pub struct NodeEndpoint {
     pub host: StrBytes,
     /// The node's port.
     pub port: u16,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -304,7 +357,7 @@ impl NodeEndpoint {
 }
 
 /// Valid versions: 0-1.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct FetchSnapshotResponse {
     /// The duration in milliseconds for which the request was throttled due to a quota violation, or zero if the request did not violate any quota.
     pub throttle_time_ms: i32,
@@ -312,7 +365,13 @@ pub struct FetchSnapshotResponse {
     pub error_code: i16,
     /// The topics to fetch.
     pub topics: Vec<TopicSnapshot>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Endpoints for all current-leaders enumerated in PartitionSnapshot.
+    /// Tagged field (tag 0, versions 1+): encoded only when it differs from
+    /// the schema default; an omitted tag decodes to that default.
+    pub node_endpoints: Vec<NodeEndpoint>,
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -341,7 +400,23 @@ impl FetchSnapshotResponse {
                 }
             }
         }
-        size += tagged_fields_size(&self.tagged_fields);
+        {
+            let mut num_tagged = self.tagged_fields.len();
+            let mut known_tagged_size = 0usize;
+            if version >= 1 && (!self.node_endpoints.is_empty()) {
+                num_tagged += 1;
+                let data_len = { let mut size = 0usize;
+            { let arr = &self.node_endpoints;
+                size += uvarint_size(arr.len() as u64 + 1);
+                for item in arr {
+                    size += item.encoded_size(version);
+                }
+            }
+                size };
+                known_tagged_size += uvarint_size(0u64) + uvarint_size(data_len as u64) + data_len;
+            }
+            size += uvarint_size(num_tagged as u64) + known_tagged_size + raw_tagged_fields_size(&self.tagged_fields);
+        }
         size
     }
 
@@ -360,7 +435,28 @@ impl FetchSnapshotResponse {
                 for item in arr { item.encode(version, buf); }
             }
         }
-        put_tagged_fields(buf, &self.tagged_fields);
+        {
+            let mut num_tagged = self.tagged_fields.len();
+            if version >= 1 && (!self.node_endpoints.is_empty()) { num_tagged += 1; }
+            put_uvarint(buf, num_tagged as u64);
+            if version >= 1 && (!self.node_endpoints.is_empty()) {
+                put_uvarint(buf, 0u64);
+                let data_len = { let mut size = 0usize;
+            { let arr = &self.node_endpoints;
+                size += uvarint_size(arr.len() as u64 + 1);
+                for item in arr {
+                    size += item.encoded_size(version);
+                }
+            }
+                size };
+                put_uvarint(buf, data_len as u64);
+            { let arr = &self.node_endpoints;
+                put_uvarint(buf, arr.len() as u64 + 1);
+                for item in arr { item.encode(version, buf); }
+            }
+            }
+            for (t, d) in &self.tagged_fields { put_raw_tagged_field(buf, *t, d); }
+        }
     }
 
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
@@ -381,7 +477,26 @@ impl FetchSnapshotResponse {
                 for _ in 0..count { items.push(TopicSnapshot::decode(version, buf)?); }
             msg.topics = items; }
         }
-        msg.tagged_fields = get_tagged_fields(buf)?;
+        {
+            let count = get_uvarint32(buf)? as usize;
+            let mut raw: Vec<(u32, Bytes)> = Vec::with_capacity(count.min(buf.len() / 2));
+            for _ in 0..count {
+                let (tag, mut data) = get_tagged_field(buf)?;
+                match tag {
+                    0 if version >= 1 => {
+                        let buf = &mut data;
+            let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };
+            let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
+            { let mut items = Vec::with_capacity(count.min(buf.len()));
+                for _ in 0..count { items.push(NodeEndpoint::decode(version, buf)?); }
+            msg.node_endpoints = items; }
+                        if !buf.is_empty() { return Err(DecodeError::TrailingBytes { remaining: buf.len() }); }
+                    }
+                    _ => raw.push((tag, data)),
+                }
+            }
+            msg.tagged_fields = raw;
+        }
         Ok(msg)
     }
 }

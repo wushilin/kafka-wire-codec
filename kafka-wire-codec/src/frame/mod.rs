@@ -1,5 +1,6 @@
 use crate::codec::SegmentedBuf;
 use crate::error::DecodeError;
+use crate::generated::kinds::{RequestKind, ResponseKind};
 use crate::header::{RequestHeader, ResponseHeader};
 use crate::message::{Encodable, EncodableZeroCopy};
 use bytes::{Bytes, BytesMut};
@@ -71,6 +72,62 @@ pub fn frame_response_zero_copy<M: EncodableZeroCopy>(
     let mut buf = SegmentedBuf::new();
     header.encode(&mut buf, header_version);
     body.write_segmented(api_version, &mut buf);
+    EncodedFrame::from_segments(buf)
+}
+
+/// [`frame_request`] for a [`RequestKind`]: size-first, single-allocation
+/// framing straight off the typed dispatch enum.
+pub fn frame_request_kind(
+    header: &RequestHeader,
+    header_version: i16,
+    body: &RequestKind,
+    api_version: i16,
+) -> EncodedFrame {
+    let size = header.encoded_size(header_version) + body.encoded_size(api_version);
+    let mut buf = BytesMut::with_capacity(size);
+    header.encode(&mut buf, header_version);
+    body.encode(api_version, &mut buf);
+    EncodedFrame::new(buf)
+}
+
+/// [`frame_response`] for a [`ResponseKind`].
+pub fn frame_response_kind(
+    header: &ResponseHeader,
+    header_version: i16,
+    body: &ResponseKind,
+    api_version: i16,
+) -> EncodedFrame {
+    let size = header.encoded_size(header_version) + body.encoded_size(api_version);
+    let mut buf = BytesMut::with_capacity(size);
+    header.encode(&mut buf, header_version);
+    body.encode(api_version, &mut buf);
+    EncodedFrame::new(buf)
+}
+
+/// [`frame_request_zero_copy`] for a [`RequestKind`]: large `Bytes` payloads
+/// become refcounted frame segments instead of being memcpy'd.
+pub fn frame_request_kind_zero_copy(
+    header: &RequestHeader,
+    header_version: i16,
+    body: &RequestKind,
+    api_version: i16,
+) -> EncodedFrame {
+    let mut buf = SegmentedBuf::new();
+    header.encode(&mut buf, header_version);
+    body.encode(api_version, &mut buf);
+    EncodedFrame::from_segments(buf)
+}
+
+/// [`frame_response_zero_copy`] for a [`ResponseKind`].
+pub fn frame_response_kind_zero_copy(
+    header: &ResponseHeader,
+    header_version: i16,
+    body: &ResponseKind,
+    api_version: i16,
+) -> EncodedFrame {
+    let mut buf = SegmentedBuf::new();
+    header.encode(&mut buf, header_version);
+    body.encode(api_version, &mut buf);
     EncodedFrame::from_segments(buf)
 }
 

@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,13 +6,15 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct FetchTopic {
     /// The unique topic ID.
     pub topic_id: Uuid,
     /// The partitions to fetch.
     pub partitions: Vec<FetchPartition>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -64,7 +66,7 @@ impl FetchTopic {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct FetchPartition {
     /// The partition index.
     pub partition_index: i32,
@@ -72,7 +74,9 @@ pub struct FetchPartition {
     pub partition_max_bytes: i32,
     /// Record batches to acknowledge.
     pub acknowledgement_batches: Vec<AcknowledgementBatch>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -133,7 +137,7 @@ impl FetchPartition {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AcknowledgementBatch {
     /// First offset of batch of records to acknowledge.
     pub first_offset: i64,
@@ -141,7 +145,9 @@ pub struct AcknowledgementBatch {
     pub last_offset: i64,
     /// Array of acknowledge types - 0:Gap,1:Accept,2:Release,3:Reject,4:Renew.
     pub acknowledge_types: Vec<i8>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -200,13 +206,15 @@ impl AcknowledgementBatch {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ForgottenTopic {
     /// The unique topic ID.
     pub topic_id: Uuid,
     /// The partitions indexes to forget.
     pub partitions: Vec<i32>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -257,7 +265,7 @@ impl ForgottenTopic {
 }
 
 /// Valid versions: 1-2.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ShareFetchRequest {
     /// The group identifier.
     pub group_id: Option<GroupId>,
@@ -283,7 +291,9 @@ pub struct ShareFetchRequest {
     pub topics: Vec<FetchTopic>,
     /// The partitions to remove from this share session.
     pub forgotten_topics_data: Vec<ForgottenTopic>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

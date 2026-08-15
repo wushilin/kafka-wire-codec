@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,13 +6,15 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ReassignableTopic {
     /// The topic name.
     pub name: TopicName,
     /// The partitions to reassign.
     pub partitions: Vec<ReassignablePartition>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -64,13 +66,15 @@ impl ReassignableTopic {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ReassignablePartition {
     /// The partition index.
     pub partition_index: i32,
     /// The replicas to place the partitions on, or null to cancel a pending reassignment for this partition.
     pub replicas: Option<Vec<BrokerId>>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -135,7 +139,7 @@ impl ReassignablePartition {
 }
 
 /// Valid versions: 0-1.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AlterPartitionReassignmentsRequest {
     /// The time in ms to wait for the request to complete.
     pub timeout_ms: i32,
@@ -143,7 +147,9 @@ pub struct AlterPartitionReassignmentsRequest {
     pub allow_replication_factor_change: bool,
     /// The topics to reassign.
     pub topics: Vec<ReassignableTopic>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

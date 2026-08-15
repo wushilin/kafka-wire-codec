@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -7,7 +7,7 @@ use crate::error::DecodeError;
 use crate::types::*;
 
 /// Valid versions: 0-6.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct InitProducerIdRequest {
     /// The transactional id, or null if the producer is not transactional.
     pub transactional_id: Option<TransactionalId>,
@@ -21,7 +21,9 @@ pub struct InitProducerIdRequest {
     pub enable2_pc: bool,
     /// True if the client wants to keep the currently ongoing transaction instead of aborting it.
     pub keep_prepared_txn: bool,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

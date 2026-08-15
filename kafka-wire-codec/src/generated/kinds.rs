@@ -4,7 +4,7 @@ use crate::codec::WireBuf;
 use crate::error::DecodeError;
 
 /// Every Kafka request, as one typed enum: decode by api key, match by variant.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum RequestKind {
     Produce(super::produce_request::ProduceRequest),
     Fetch(super::fetch_request::FetchRequest),
@@ -1166,7 +1166,7 @@ impl From<super::delete_share_group_offsets_request::DeleteShareGroupOffsetsRequ
 }
 
 /// Every Kafka response, as one typed enum: decode by api key, match by variant.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ResponseKind {
     Produce(super::produce_response::ProduceResponse),
     Fetch(super::fetch_response::FetchResponse),

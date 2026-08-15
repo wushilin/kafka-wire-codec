@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,7 +6,7 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DescribeConfigsResult {
     /// The error code, or 0 if we were able to successfully describe the configurations.
     pub error_code: i16,
@@ -18,7 +18,9 @@ pub struct DescribeConfigsResult {
     pub resource_name: StrBytes,
     /// Each listed configuration.
     pub configs: Vec<DescribeConfigsResourceResult>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -110,7 +112,7 @@ impl DescribeConfigsResult {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DescribeConfigsResourceResult {
     /// The configuration name.
     pub name: StrBytes,
@@ -128,7 +130,9 @@ pub struct DescribeConfigsResourceResult {
     pub config_type: i8,
     /// The configuration documentation.
     pub documentation: Option<StrBytes>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -250,7 +254,7 @@ impl DescribeConfigsResourceResult {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DescribeConfigsSynonym {
     /// The synonym name.
     pub name: StrBytes,
@@ -258,7 +262,9 @@ pub struct DescribeConfigsSynonym {
     pub value: Option<StrBytes>,
     /// The synonym source.
     pub source: i8,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -319,13 +325,15 @@ impl DescribeConfigsSynonym {
 }
 
 /// Valid versions: 1-4.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct DescribeConfigsResponse {
     /// The duration in milliseconds for which the request was throttled due to a quota violation, or zero if the request did not violate any quota.
     pub throttle_time_ms: i32,
     /// The results for each resource.
     pub results: Vec<DescribeConfigsResult>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

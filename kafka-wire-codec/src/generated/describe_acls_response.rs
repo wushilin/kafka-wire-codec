@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,7 +6,7 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DescribeAclsResource {
     /// The resource type.
     pub resource_type: i8,
@@ -16,7 +16,9 @@ pub struct DescribeAclsResource {
     pub pattern_type: i8,
     /// The ACLs.
     pub acls: Vec<AclDescription>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -98,7 +100,7 @@ impl DescribeAclsResource {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AclDescription {
     /// The ACL principal.
     pub principal: StrBytes,
@@ -108,7 +110,9 @@ pub struct AclDescription {
     pub operation: i8,
     /// The ACL permission type.
     pub permission_type: i8,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -167,7 +171,7 @@ impl AclDescription {
 }
 
 /// Valid versions: 1-3.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DescribeAclsResponse {
     /// The duration in milliseconds for which the request was throttled due to a quota violation, or zero if the request did not violate any quota.
     pub throttle_time_ms: i32,
@@ -177,7 +181,9 @@ pub struct DescribeAclsResponse {
     pub error_message: Option<StrBytes>,
     /// Each Resource that is referenced in an ACL.
     pub resources: Vec<DescribeAclsResource>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

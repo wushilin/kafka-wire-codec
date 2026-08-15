@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,7 +6,7 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct OffsetCommitRequestTopic {
     /// The topic name.
     pub name: TopicName,
@@ -14,7 +14,9 @@ pub struct OffsetCommitRequestTopic {
     pub topic_id: Uuid,
     /// Each partition to commit offsets for.
     pub partitions: Vec<OffsetCommitRequestPartition>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -75,7 +77,7 @@ impl OffsetCommitRequestTopic {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OffsetCommitRequestPartition {
     /// The partition index.
     pub partition_index: i32,
@@ -85,7 +87,9 @@ pub struct OffsetCommitRequestPartition {
     pub committed_leader_epoch: i32,
     /// Any associated metadata the client wants to keep.
     pub committed_metadata: Option<StrBytes>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -156,7 +160,7 @@ impl OffsetCommitRequestPartition {
 }
 
 /// Valid versions: 2-10.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OffsetCommitRequest {
     /// The unique group identifier.
     pub group_id: GroupId,
@@ -170,7 +174,9 @@ pub struct OffsetCommitRequest {
     pub retention_time_ms: i64,
     /// The topics to commit offsets for.
     pub topics: Vec<OffsetCommitRequestTopic>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

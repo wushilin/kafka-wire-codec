@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,7 +6,7 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct TopicProduceData {
     /// The topic name.
     pub name: TopicName,
@@ -14,7 +14,9 @@ pub struct TopicProduceData {
     pub topic_id: Uuid,
     /// Each partition to produce to.
     pub partition_data: Vec<PartitionProduceData>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -75,13 +77,15 @@ impl TopicProduceData {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PartitionProduceData {
     /// The partition index.
     pub index: i32,
     /// The record data to be produced.
     pub records: Option<Bytes>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -132,7 +136,7 @@ impl PartitionProduceData {
 }
 
 /// Valid versions: 3-13.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ProduceRequest {
     /// The transactional ID, or null if the producer is not transactional.
     pub transactional_id: Option<TransactionalId>,
@@ -142,7 +146,9 @@ pub struct ProduceRequest {
     pub timeout_ms: i32,
     /// Each topic to produce to.
     pub topic_data: Vec<TopicProduceData>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

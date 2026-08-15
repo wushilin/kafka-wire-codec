@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,13 +6,15 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct OffsetDeleteResponseTopic {
     /// The topic name.
     pub name: TopicName,
     /// The responses for each partition in the topic.
     pub partitions: Vec<OffsetDeleteResponsePartition>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -61,13 +63,15 @@ impl OffsetDeleteResponseTopic {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct OffsetDeleteResponsePartition {
     /// The partition index.
     pub partition_index: i32,
     /// The error code, or 0 if there was no error.
     pub error_code: i16,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -105,7 +109,7 @@ impl OffsetDeleteResponsePartition {
 }
 
 /// Valid versions: 0-0.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct OffsetDeleteResponse {
     /// The top-level error code, or 0 if there was no error.
     pub error_code: i16,
@@ -113,7 +117,9 @@ pub struct OffsetDeleteResponse {
     pub throttle_time_ms: i32,
     /// The responses for each topic.
     pub topics: Vec<OffsetDeleteResponseTopic>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

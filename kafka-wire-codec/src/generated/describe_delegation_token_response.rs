@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,7 +6,7 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct DescribedDelegationToken {
     /// The token principal type.
     pub principal_type: StrBytes,
@@ -28,7 +28,9 @@ pub struct DescribedDelegationToken {
     pub hmac: Bytes,
     /// Those who are able to renew this token before it expires.
     pub renewers: Vec<DescribedDelegationTokenRenewer>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -152,13 +154,15 @@ impl DescribedDelegationToken {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct DescribedDelegationTokenRenewer {
     /// The renewer principal type.
     pub principal_type: StrBytes,
     /// The renewer principal name.
     pub principal_name: StrBytes,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -199,7 +203,7 @@ impl DescribedDelegationTokenRenewer {
 }
 
 /// Valid versions: 1-3.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct DescribeDelegationTokenResponse {
     /// The error code, or 0 if there was no error.
     pub error_code: i16,
@@ -207,7 +211,9 @@ pub struct DescribeDelegationTokenResponse {
     pub tokens: Vec<DescribedDelegationToken>,
     /// The duration in milliseconds for which the request was throttled due to a quota violation, or zero if the request did not violate any quota.
     pub throttle_time_ms: i32,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

@@ -247,6 +247,15 @@ pub fn get_compact_bytes(buf: &mut Bytes) -> Result<Option<Bytes>, DecodeError> 
     Ok(Some(buf.split_to(len)))
 }
 
+/// Read one tagged field: uvarint tag, plain uvarint byte length (NOT compact
+/// +1), then the raw data as a zero-copy slice.
+pub fn get_tagged_field(buf: &mut Bytes) -> Result<(u32, Bytes), DecodeError> {
+    let tag = get_uvarint32(buf)?;
+    let size = get_uvarint32(buf)? as usize;
+    ensure(buf, size)?;
+    Ok((tag, buf.split_to(size)))
+}
+
 /// Read the tagged-fields section; preserves unknown tags as raw Bytes.
 pub fn get_tagged_fields(buf: &mut Bytes) -> Result<Vec<(u32, Bytes)>, DecodeError> {
     let count = get_uvarint32(buf)? as usize;
@@ -255,12 +264,7 @@ pub fn get_tagged_fields(buf: &mut Bytes) -> Result<Vec<(u32, Bytes)>, DecodeErr
     // huge upfront allocation.
     let mut fields = Vec::with_capacity(count.min(buf.len() / 2));
     for _ in 0..count {
-        let tag = get_uvarint32(buf)?;
-        // Tagged field data is a plain uvarint byte-length prefix (NOT compact +1).
-        let size = get_uvarint32(buf)? as usize;
-        ensure(buf, size)?;
-        let data = buf.split_to(size);
-        fields.push((tag, data));
+        fields.push(get_tagged_field(buf)?);
     }
     Ok(fields)
 }
@@ -322,14 +326,20 @@ pub fn compact_nullable_bytes_size(b: Option<&[u8]>) -> usize {
     }
 }
 
+/// Size of the raw tagged fields WITHOUT the leading count varint — used by
+/// generated code that interleaves schema-known (typed) tags with raw ones.
+pub fn raw_tagged_fields_size(fields: &[(u32, Bytes)]) -> usize {
+    fields
+        .iter()
+        .map(|(tag, data)| {
+            // Plain uvarint length prefix + raw data (NOT compact bytes).
+            uvarint_size(*tag as u64) + uvarint_size(data.len() as u64) + data.len()
+        })
+        .sum()
+}
+
 pub fn tagged_fields_size(fields: &[(u32, Bytes)]) -> usize {
-    let mut size = uvarint_size(fields.len() as u64);
-    for (tag, data) in fields {
-        size += uvarint_size(*tag as u64);
-        // Plain uvarint length prefix + raw data (NOT compact bytes).
-        size += uvarint_size(data.len() as u64) + data.len();
-    }
-    size
+    uvarint_size(fields.len() as u64) + raw_tagged_fields_size(fields)
 }
 
 // ── Encode helpers ────────────────────────────────────────────────────────────
@@ -475,6 +485,16 @@ pub fn put_compact_nullable_bytes_zc<B: WireBuf>(buf: &mut B, b: Option<&Bytes>)
     }
 }
 
+/// Write one raw tagged field (tag, plain uvarint length, data). Generated
+/// code uses this to interleave raw tags with schema-known typed ones in
+/// ascending tag order.
+pub fn put_raw_tagged_field<B: WireBuf>(buf: &mut B, tag: u32, data: &Bytes) {
+    put_uvarint(buf, tag as u64);
+    // Plain uvarint length prefix + raw data (NOT compact bytes).
+    put_uvarint(buf, data.len() as u64);
+    buf.put_shared(data);
+}
+
 pub fn put_tagged_fields<B: WireBuf>(buf: &mut B, fields: &[(u32, Bytes)]) {
     // Kafka readers reject out-of-order or duplicate tags; catch the caller
     // bug here instead of emitting a frame the broker will refuse.
@@ -484,10 +504,7 @@ pub fn put_tagged_fields<B: WireBuf>(buf: &mut B, fields: &[(u32, Bytes)]) {
     );
     put_uvarint(buf, fields.len() as u64);
     for (tag, data) in fields {
-        put_uvarint(buf, *tag as u64);
-        // Plain uvarint length prefix + raw data (NOT compact bytes).
-        put_uvarint(buf, data.len() as u64);
-        buf.put_shared(data);
+        put_raw_tagged_field(buf, *tag, data);
     }
 }
 

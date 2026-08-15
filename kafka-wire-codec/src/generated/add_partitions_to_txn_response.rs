@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,13 +6,15 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AddPartitionsToTxnTopicResult {
     /// The topic name.
     pub name: TopicName,
     /// The results for each partition.
     pub results_by_partition: Vec<AddPartitionsToTxnPartitionResult>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -64,13 +66,15 @@ impl AddPartitionsToTxnTopicResult {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AddPartitionsToTxnPartitionResult {
     /// The partition indexes.
     pub partition_index: i32,
     /// The response error code.
     pub partition_error_code: i16,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -110,13 +114,15 @@ impl AddPartitionsToTxnPartitionResult {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AddPartitionsToTxnResult {
     /// The transactional id corresponding to the transaction.
     pub transactional_id: TransactionalId,
     /// The results for each topic.
     pub topic_results: Vec<AddPartitionsToTxnTopicResult>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -169,7 +175,7 @@ impl AddPartitionsToTxnResult {
 }
 
 /// Valid versions: 0-5.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AddPartitionsToTxnResponse {
     /// Duration in milliseconds for which the request was throttled due to a quota violation, or zero if the request did not violate any quota.
     pub throttle_time_ms: i32,
@@ -179,7 +185,9 @@ pub struct AddPartitionsToTxnResponse {
     pub results_by_transaction: Vec<AddPartitionsToTxnResult>,
     /// The results for each topic.
     pub results_by_topic_v3_and_below: Vec<AddPartitionsToTxnTopicResult>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

@@ -308,6 +308,200 @@ fn uuid_wire_format_is_rfc_big_endian() {
 }
 
 #[test]
+fn tagged_node_endpoints_are_typed_fields() {
+    use kafka_wire_codec::generated::fetch_response::{FetchResponse, NodeEndpoint};
+
+    let resp = FetchResponse {
+        node_endpoints: vec![NodeEndpoint {
+            node_id: BrokerId(5),
+            host: "broker-5.internal".into(),
+            port: 9092,
+            rack: Some("rack-a".into()),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    // v16+: encoded as tagged field 0, size-first exact, and decodes back into
+    // the TYPED field — nothing lands in the raw bucket.
+    let version = 16i16;
+    let wire = resp.to_bytes(version).freeze();
+    assert_eq!(wire.len(), resp.encoded_size(version));
+    let decoded = FetchResponse::decode(version, &mut wire.clone()).unwrap();
+    assert_eq!(decoded.node_endpoints, resp.node_endpoints);
+    assert_eq!(decoded.node_endpoints[0].node_id, BrokerId(5));
+    assert!(decoded.tagged_fields.is_empty());
+
+    // Below the taggedVersions floor the field is not encoded at all.
+    let wire15 = resp.to_bytes(15).freeze();
+    let decoded15 = FetchResponse::decode(15, &mut wire15.clone()).unwrap();
+    assert!(decoded15.node_endpoints.is_empty());
+
+    // Default value ⇒ tag omitted: a default message encodes zero tagged
+    // fields and round-trips to default.
+    let empty = FetchResponse::default().to_bytes(version).freeze();
+    let d = FetchResponse::decode(version, &mut empty.clone()).unwrap();
+    assert!(d.node_endpoints.is_empty() && d.tagged_fields.is_empty());
+    assert_eq!(FetchResponse::default().to_bytes(version), empty);
+}
+
+#[test]
+fn tagged_produce_response_node_endpoints_roundtrip() {
+    use kafka_wire_codec::generated::produce_response::{NodeEndpoint, ProduceResponse};
+    let version = 10i16;
+    let resp = ProduceResponse {
+        node_endpoints: vec![NodeEndpoint {
+            node_id: BrokerId(1),
+            host: "h".into(),
+            port: 1,
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let wire = resp.to_bytes(version).freeze();
+    assert_eq!(wire.len(), resp.encoded_size(version));
+    let decoded = ProduceResponse::decode(version, &mut wire.clone()).unwrap();
+    assert_eq!(decoded.node_endpoints, resp.node_endpoints);
+    assert_eq!(decoded.to_bytes(version).freeze(), wire);
+}
+
+#[test]
+fn unknown_tags_are_preserved_and_interleaved_in_ascending_order() {
+    use kafka_wire_codec::generated::fetch_request::{FetchRequest, ReplicaState};
+
+    // FetchRequest v15 knows tag 0 (ClusterId, 12+) and tag 1 (ReplicaState,
+    // 15+). Encode with cluster_id UNSET but a raw tag 0 carrying a valid
+    // cluster-id encoding, plus a trailing unknown tag 200: the encoder must
+    // drain raw tag 0 BEFORE typed tag 1 (ascending order) and tag 200 after.
+    let version = 15i16;
+    let req = FetchRequest {
+        max_wait_ms: 500,
+        replica_state: ReplicaState {
+            replica_id: BrokerId(3),
+            replica_epoch: 9,
+            ..Default::default()
+        },
+        // b"\x02s" = compact string "s" — what ClusterId would encode as.
+        tagged_fields: vec![(0, Bytes::from_static(b"\x02s")), (200, Bytes::from_static(b"xy"))],
+        ..Default::default()
+    };
+
+    let wire = req.to_bytes(version).freeze();
+    assert_eq!(wire.len(), req.encoded_size(version));
+
+    // Decode routes tag 0 into the TYPED cluster_id (it is schema-known),
+    // keeps unknown tag 200 raw, and fills replica_state from typed tag 1.
+    let decoded = FetchRequest::decode(version, &mut wire.clone()).unwrap();
+    assert_eq!(decoded.cluster_id.as_ref().unwrap().as_str(), "s");
+    assert_eq!(decoded.replica_state, req.replica_state);
+    assert_eq!(decoded.tagged_fields, vec![(200, Bytes::from_static(b"xy"))]);
+
+    // Byte-exact round-trip: the raw-tag-0 encode and the typed-cluster_id
+    // encode must produce identical wire order (0, 1, 200). A wrong interleave
+    // would decode field-equal but produce different bytes.
+    assert_eq!(decoded.to_bytes(version).freeze(), wire);
+
+    // A tagged uuid at partition level (FetchPartition.ReplicaDirectoryId,
+    // tag 0 from v17) decodes into the typed field, not the raw bucket.
+    use kafka_wire_codec::generated::fetch_request::{FetchPartition, FetchTopic};
+    let req17 = FetchRequest {
+        topics: vec![FetchTopic {
+            partitions: vec![FetchPartition {
+                partition: 4,
+                replica_directory_id: Uuid::from_u128(7),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let wire17 = req17.to_bytes(17).freeze();
+    assert_eq!(wire17.len(), req17.encoded_size(17));
+    let decoded17 = FetchRequest::decode(17, &mut wire17.clone()).unwrap();
+    let p = &decoded17.topics[0].partitions[0];
+    assert_eq!(p.replica_directory_id, Uuid::from_u128(7));
+    assert!(p.tagged_fields.is_empty());
+    // ...and below v17 the same field is silently omitted (default rule).
+    let wire16 = req17.to_bytes(16).freeze();
+    let decoded16 = FetchRequest::decode(16, &mut wire16.clone()).unwrap();
+    assert_eq!(
+        decoded16.topics[0].partitions[0].replica_directory_id,
+        Uuid::nil()
+    );
+}
+
+#[test]
+fn tagged_partition_level_structs_roundtrip() {
+    use kafka_wire_codec::generated::fetch_response::{
+        EpochEndOffset, FetchResponse, FetchableTopicResponse, LeaderIdAndEpoch, PartitionData,
+    };
+    let version = 16i16;
+    let resp = FetchResponse {
+        responses: vec![FetchableTopicResponse {
+            partitions: vec![PartitionData {
+                partition_index: 1,
+                diverging_epoch: EpochEndOffset {
+                    epoch: 5,
+                    end_offset: 42,
+                    ..Default::default()
+                },
+                current_leader: LeaderIdAndEpoch {
+                    leader_id: BrokerId(2),
+                    leader_epoch: 7,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let wire = resp.to_bytes(version).freeze();
+    assert_eq!(wire.len(), resp.encoded_size(version));
+    let decoded = FetchResponse::decode(version, &mut wire.clone()).unwrap();
+    let p = &decoded.responses[0].partitions[0];
+    assert_eq!(p.diverging_epoch.epoch, 5);
+    assert_eq!(p.diverging_epoch.end_offset, 42);
+    assert_eq!(p.current_leader.leader_id, BrokerId(2));
+    assert_eq!(decoded.to_bytes(version).freeze(), wire);
+}
+
+#[test]
+fn kind_frame_helpers_match_message_framing() {
+    use kafka_wire_codec::frame::{frame_request, frame_request_kind, frame_request_kind_zero_copy};
+    use kafka_wire_codec::header::RequestHeader;
+
+    let version = 9i16;
+    let req = sample_produce();
+    let header = RequestHeader {
+        api_key: ProduceRequest::API_KEY,
+        api_version: version,
+        correlation_id: 1,
+        client_id: Some("proxy".into()),
+        tagged_fields: vec![],
+    };
+    let plain = frame_request(&header, 2, &req, version);
+    let kind: RequestKind = req.into();
+    let via_kind = frame_request_kind(&header, 2, &kind, version);
+    let via_kind_zc = frame_request_kind_zero_copy(&header, 2, &kind, version);
+    assert_eq!(plain.to_contiguous(), via_kind.to_contiguous());
+    assert_eq!(plain.to_contiguous(), via_kind_zc.to_contiguous());
+}
+
+#[test]
+fn supports_version_gates_encoding() {
+    assert!(ProduceRequest::supports_version(ProduceRequest::VALID_MIN_VERSION));
+    assert!(ProduceRequest::supports_version(ProduceRequest::VALID_MAX_VERSION));
+    assert!(!ProduceRequest::supports_version(99));
+    assert!(!ProduceRequest::supports_version(-1));
+    // Decode of an unsupported version is an Err, not a panic.
+    assert!(matches!(
+        ProduceRequest::decode(99, &mut Bytes::new()),
+        Err(DecodeError::UnsupportedVersion { api_key: 0, version: 99 })
+    ));
+}
+
+#[test]
 fn header_client_id_is_str_bytes() {
     use kafka_wire_codec::header::RequestHeader;
     let h = RequestHeader {

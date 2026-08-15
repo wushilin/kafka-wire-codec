@@ -29,7 +29,11 @@ Generated from Kafka **4.3.1**.
    once at decode — `.as_str()` is free), `uuid` fields are `uuid::Uuid`, and the
    schemas' `entityType` annotations become newtypes (`TopicName`, `GroupId`,
    `TransactionalId`, `BrokerId`, `ProducerId`) so ids of different kinds can't be
-   mixed up silently.
+   mixed up silently. Schema-declared **tagged fields** are typed too (e.g.
+   `FetchResponse.node_endpoints`, partition-level `diverging_epoch`): they encode
+   into the tagged section only when non-default — exactly Kafka's own rule — and
+   unknown tags are preserved raw, interleaved in ascending tag order for
+   byte-exact round-trips.
 
 ## Workspace layout
 
@@ -138,6 +142,12 @@ let topic_id: Uuid = metadata.topics[0].topic_id;       // real Uuid, not [u8; 1
 
 - One struct per message; version-gating is applied at **runtime** via an `i16`
   version argument. Fields absent in a version simply keep their `Default`.
+- **Version-range contract:** decoding an unsupported version returns
+  `Err(DecodeError::UnsupportedVersion)` (network input is a runtime condition);
+  encoding at an unsupported version **panics** (caller-chosen versions are a
+  programmer error, and there is no partial frame to salvage). Gate dynamic
+  versions with `Encodable::supports_version()` or the
+  `VALID_MIN/MAX_VERSION` constants before encoding.
 - The caller supplies the API version. Discover what a broker supports by sending
   an `ApiVersionsRequest` (api_key 18) on connect — exactly like every production
   Kafka client.
@@ -206,7 +216,10 @@ cargo test --test compat            # builds fixtures via Maven, then verifies
 SKIP_COMPAT_TESTS=1 cargo test      # skip (no Java/Maven available)
 ```
 
-Current status: **964 records, 0 failed** against `kafka-clients:4.3.1`.
+Current status: **1002 records, 0 failed** against `kafka-clients:4.3.1`. The
+test also asserts the fixtures genuinely populate schema-declared tagged fields
+(e.g. `FetchResponse.node_endpoints`), so the typed tagged-field path can never
+pass vacuously.
 
 Requires JDK 11+ and Maven on `PATH`.
 

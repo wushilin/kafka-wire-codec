@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,7 +6,7 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReplicaState {
     /// The ID of the replica.
     pub replica_id: BrokerId,
@@ -18,7 +18,9 @@ pub struct ReplicaState {
     pub last_fetch_timestamp: i64,
     /// The leader wall clock append time of the offset for which the follower made the most recent fetch request. This is reported as the current time for the leader and -1 if unknown for a voter.
     pub last_caught_up_timestamp: i64,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -98,13 +100,15 @@ impl ReplicaState {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct TopicData {
     /// The topic name.
     pub topic_name: TopicName,
     /// The partition data.
     pub partitions: Vec<PartitionData>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -156,7 +160,7 @@ impl TopicData {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PartitionData {
     /// The partition index.
     pub partition_index: i32,
@@ -174,7 +178,9 @@ pub struct PartitionData {
     pub current_voters: Vec<ReplicaState>,
     /// The observers of the partition.
     pub observers: Vec<ReplicaState>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -308,13 +314,15 @@ impl PartitionData {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Node {
     /// The ID of the associated node.
     pub node_id: BrokerId,
     /// The listeners of this controller.
     pub listeners: Vec<Listener>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -366,7 +374,7 @@ impl Node {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Listener {
     /// The name of the endpoint.
     pub name: StrBytes,
@@ -374,7 +382,9 @@ pub struct Listener {
     pub host: StrBytes,
     /// The port.
     pub port: u16,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -424,7 +434,7 @@ impl Listener {
 }
 
 /// Valid versions: 0-2.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DescribeQuorumResponse {
     /// The top level error code.
     pub error_code: i16,
@@ -434,7 +444,9 @@ pub struct DescribeQuorumResponse {
     pub topics: Vec<TopicData>,
     /// The nodes in the quorum.
     pub nodes: Vec<Node>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

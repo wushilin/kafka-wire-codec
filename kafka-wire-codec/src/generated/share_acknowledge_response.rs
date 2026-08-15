@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,13 +6,15 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ShareAcknowledgeTopicResponse {
     /// The unique topic ID.
     pub topic_id: Uuid,
     /// The topic partitions.
     pub partitions: Vec<PartitionData>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -64,7 +66,7 @@ impl ShareAcknowledgeTopicResponse {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct PartitionData {
     /// The partition index.
     pub partition_index: i32,
@@ -74,7 +76,9 @@ pub struct PartitionData {
     pub error_message: Option<StrBytes>,
     /// The current leader of the partition.
     pub current_leader: LeaderIdAndEpoch,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -132,13 +136,15 @@ impl PartitionData {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct LeaderIdAndEpoch {
     /// The ID of the current leader or -1 if the leader is unknown.
     pub leader_id: i32,
     /// The latest known leader epoch.
     pub leader_epoch: i32,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -178,7 +184,7 @@ impl LeaderIdAndEpoch {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct NodeEndpoint {
     /// The ID of the associated node.
     pub node_id: BrokerId,
@@ -188,7 +194,9 @@ pub struct NodeEndpoint {
     pub port: i32,
     /// The rack of the node, or null if it has not been assigned to a rack.
     pub rack: Option<StrBytes>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -247,7 +255,7 @@ impl NodeEndpoint {
 }
 
 /// Valid versions: 1-2.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ShareAcknowledgeResponse {
     /// The duration in milliseconds for which the request was throttled due to a quota violation, or zero if the request did not violate any quota.
     pub throttle_time_ms: i32,
@@ -261,7 +269,9 @@ pub struct ShareAcknowledgeResponse {
     pub responses: Vec<ShareAcknowledgeTopicResponse>,
     /// Endpoints for all current leaders enumerated in PartitionData with error NOT_LEADER_OR_FOLLOWER.
     pub node_endpoints: Vec<NodeEndpoint>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

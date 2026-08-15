@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,7 +6,7 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Listener {
     /// The name of the endpoint.
     pub name: StrBytes,
@@ -14,7 +14,9 @@ pub struct Listener {
     pub host: StrBytes,
     /// The port.
     pub port: u16,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -63,13 +65,15 @@ impl Listener {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct KRaftVersionFeature {
     /// The minimum supported KRaft protocol version.
     pub min_supported_version: i16,
     /// The maximum supported KRaft protocol version.
     pub max_supported_version: i16,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -110,7 +114,7 @@ impl KRaftVersionFeature {
 }
 
 /// Valid versions: 0-0.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UpdateRaftVoterRequest {
     /// The cluster id.
     pub cluster_id: Option<StrBytes>,
@@ -124,7 +128,9 @@ pub struct UpdateRaftVoterRequest {
     pub listeners: Vec<Listener>,
     /// The range of versions of the protocol that the replica supports.
     pub k_raft_version_feature: KRaftVersionFeature,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

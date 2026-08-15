@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,7 +6,7 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Listener {
     /// The name of the endpoint.
     pub name: StrBytes,
@@ -14,7 +14,9 @@ pub struct Listener {
     pub host: StrBytes,
     /// The port.
     pub port: u16,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -64,7 +66,7 @@ impl Listener {
 }
 
 /// Valid versions: 0-1.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AddRaftVoterRequest {
     /// The cluster id.
     pub cluster_id: Option<StrBytes>,
@@ -78,7 +80,9 @@ pub struct AddRaftVoterRequest {
     pub listeners: Vec<Listener>,
     /// When true, return a response after the new voter set is committed. Otherwise, return after the leader writes the changes locally.
     pub ack_when_committed: bool,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

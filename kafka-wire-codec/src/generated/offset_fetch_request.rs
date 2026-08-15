@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,13 +6,15 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct OffsetFetchRequestTopic {
     /// The topic name.
     pub name: TopicName,
     /// The partition indexes we would like to fetch offsets for.
     pub partition_indexes: Vec<i32>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -62,7 +64,7 @@ impl OffsetFetchRequestTopic {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OffsetFetchRequestGroup {
     /// The group ID.
     pub group_id: GroupId,
@@ -72,7 +74,9 @@ pub struct OffsetFetchRequestGroup {
     pub member_epoch: i32,
     /// Each topic we would like to fetch offsets for, or null to fetch offsets for all topics.
     pub topics: Option<Vec<OffsetFetchRequestTopics>>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -170,7 +174,7 @@ impl OffsetFetchRequestGroup {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct OffsetFetchRequestTopics {
     /// The topic name.
     pub name: TopicName,
@@ -178,7 +182,9 @@ pub struct OffsetFetchRequestTopics {
     pub topic_id: Uuid,
     /// The partition indexes we would like to fetch offsets for.
     pub partition_indexes: Vec<i32>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -238,7 +244,7 @@ impl OffsetFetchRequestTopics {
 }
 
 /// Valid versions: 1-10.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OffsetFetchRequest {
     /// The group to fetch offsets for.
     pub group_id: GroupId,
@@ -248,7 +254,9 @@ pub struct OffsetFetchRequest {
     pub groups: Vec<OffsetFetchRequestGroup>,
     /// Whether broker should hold on returning unstable offsets but set a retriable error code for the partitions.
     pub require_stable: bool,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

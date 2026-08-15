@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -7,13 +7,15 @@ use crate::error::DecodeError;
 use crate::types::*;
 
 /// Valid versions: 0-5.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ListGroupsRequest {
     /// The states of the groups we want to list. If empty, all groups are returned with their state.
     pub states_filter: Vec<StrBytes>,
     /// The types of the groups we want to list. If empty, all groups are returned with their type.
     pub types_filter: Vec<StrBytes>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

@@ -13,6 +13,7 @@ import org.apache.kafka.common.record.internal.BaseRecords;
 import org.apache.kafka.common.record.internal.MemoryRecords;
 import org.apache.kafka.common.record.internal.MemoryRecordsBuilder;
 import org.apache.kafka.common.record.TimestampType;
+import org.apache.kafka.common.utils.ImplicitLinkedHashCollection;
 
 import java.io.RandomAccessFile;
 import java.lang.reflect.Method;
@@ -61,7 +62,9 @@ public class FixtureGenerator {
     static final int MEDIUM = 64 * 1024;        // 64 KiB
     static final int LARGE = 55 * 1024 * 1024;  // 55 MiB
 
-    static final int MAX_DEPTH = 4;
+    // Deep enough to reach e.g. FetchResponse -> topic -> partition ->
+    // DivergingEpoch (depth 5); Kafka schemas are trees, so this terminates.
+    static final int MAX_DEPTH = 8;
     static final int MAX_COLL_ELEMENTS = 2;
 
     // Only these messages get the 55 MiB variant — the canonical large-data carriers —
@@ -267,6 +270,16 @@ public class FixtureGenerator {
         for (Method setter : node.getClass().getMethods()) {
             if (!setter.getName().startsWith("set")) continue;
             if (setter.getParameterCount() != 1) continue;
+            // Collection elements carry intrusive linked-list indexes via
+            // ImplicitLinkedHashCollection.Element#setNext/setPrev. They are
+            // NOT schema fields, and setting them marks the element as
+            // "already in a collection", making the later Collection.add()
+            // silently return false — which left every *Collection-typed
+            // (tagged) field, e.g. FetchResponse.NodeEndpoints, empty.
+            if (node instanceof ImplicitLinkedHashCollection.Element
+                    && (setter.getName().equals("setNext") || setter.getName().equals("setPrev"))) {
+                continue;
+            }
 
             Class<?> pt = setter.getParameterTypes()[0];
             Type gpt = setter.getGenericParameterTypes()[0];
@@ -274,21 +287,35 @@ public class FixtureGenerator {
             try {
                 value = synth(pt, gpt, version, payloadBytes, depth);
             } catch (Throwable t) {
+                debugPopulate(node, setter, version, "synth failed", t);
                 continue;
             }
-            if (value == null) continue;
+            if (value == null) {
+                debugPopulate(node, setter, version, "synth returned null", null);
+                continue;
+            }
 
             Object old = tryGet(node, setter.getName());
             try {
                 setter.invoke(node, value);
                 trialSerialize(node, version);   // validity check at this version
             } catch (Throwable t) {
+                debugPopulate(node, setter, version, "reverted", t);
                 // Revert a field that's not valid at this version. The revert
                 // must run even when the previous value was null (nullable
                 // strings default to null) or the invalid value sticks.
                 try { setter.invoke(node, new Object[]{old}); } catch (Throwable ignored) {}
             }
         }
+    }
+
+    /** Diagnostics for silent population gaps: set DEBUG_POPULATE=1 to enable. */
+    static void debugPopulate(Message node, Method setter, short version, String what, Throwable t) {
+        if (System.getenv("DEBUG_POPULATE") == null) return;
+        Throwable root = t;
+        while (root != null && root.getCause() != null) root = root.getCause();
+        System.err.println("populate: " + node.getClass().getSimpleName() + "." + setter.getName()
+            + " v" + version + " " + what + (root == null ? "" : (": " + root)));
     }
 
     /**

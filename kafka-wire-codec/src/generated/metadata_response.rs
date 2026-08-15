@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,7 +6,7 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct MetadataResponseBroker {
     /// The broker ID.
     pub node_id: BrokerId,
@@ -16,7 +16,9 @@ pub struct MetadataResponseBroker {
     pub port: i32,
     /// The rack of the broker, or null if it has not been assigned to a rack.
     pub rack: Option<StrBytes>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -74,7 +76,7 @@ impl MetadataResponseBroker {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MetadataResponseTopic {
     /// The topic error, or 0 if there was no error.
     pub error_code: i16,
@@ -88,7 +90,9 @@ pub struct MetadataResponseTopic {
     pub partitions: Vec<MetadataResponsePartition>,
     /// 32-bit bitfield to represent authorized operations for this topic.
     pub topic_authorized_operations: i32,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -190,7 +194,7 @@ impl MetadataResponseTopic {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MetadataResponsePartition {
     /// The partition error, or 0 if there was no error.
     pub error_code: i16,
@@ -206,7 +210,9 @@ pub struct MetadataResponsePartition {
     pub isr_nodes: Vec<BrokerId>,
     /// The set of offline replicas of this partition.
     pub offline_replicas: Vec<BrokerId>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -337,7 +343,7 @@ impl MetadataResponsePartition {
 }
 
 /// Valid versions: 0-13.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MetadataResponse {
     /// The duration in milliseconds for which the request was throttled due to a quota violation, or zero if the request did not violate any quota.
     pub throttle_time_ms: i32,
@@ -353,7 +359,9 @@ pub struct MetadataResponse {
     pub cluster_authorized_operations: i32,
     /// The top-level error code, or 0 if there was no error.
     pub error_code: i16,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,13 +6,15 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct OffsetForLeaderTopic {
     /// The topic name.
     pub topic: TopicName,
     /// Each partition to get offsets for.
     pub partitions: Vec<OffsetForLeaderPartition>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -64,7 +66,7 @@ impl OffsetForLeaderTopic {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OffsetForLeaderPartition {
     /// The partition index.
     pub partition: i32,
@@ -72,7 +74,9 @@ pub struct OffsetForLeaderPartition {
     pub current_leader_epoch: i32,
     /// The epoch to look up an offset for.
     pub leader_epoch: i32,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -133,13 +137,15 @@ impl OffsetForLeaderPartition {
 }
 
 /// Valid versions: 2-4.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OffsetForLeaderEpochRequest {
     /// The broker ID of the follower, of -1 if this request is from a consumer.
     pub replica_id: BrokerId,
     /// Each topic to get offsets for.
     pub topics: Vec<OffsetForLeaderTopic>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

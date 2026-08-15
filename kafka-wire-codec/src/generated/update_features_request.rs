@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,7 +6,7 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FeatureUpdateKey {
     /// The name of the finalized feature to be updated.
     pub feature: StrBytes,
@@ -16,7 +16,9 @@ pub struct FeatureUpdateKey {
     pub allow_downgrade: bool,
     /// Determine which type of upgrade will be performed: 1 will perform an upgrade only (default), 2 is safe downgrades only (lossless), 3 is unsafe downgrades (lossy).
     pub upgrade_type: i8,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -87,7 +89,7 @@ impl FeatureUpdateKey {
 }
 
 /// Valid versions: 0-2.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UpdateFeaturesRequest {
     /// How long to wait in milliseconds before timing out the request.
     pub timeout_ms: i32,
@@ -95,7 +97,9 @@ pub struct UpdateFeaturesRequest {
     pub feature_updates: Vec<FeatureUpdateKey>,
     /// True if we should validate the request, but not perform the upgrade or downgrade.
     pub validate_only: bool,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

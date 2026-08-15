@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,13 +6,15 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct TopicData {
     /// The topic name.
     pub topic_name: TopicName,
     /// The partitions.
     pub partitions: Vec<PartitionData>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -64,7 +66,7 @@ impl TopicData {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct PartitionData {
     /// The partition index.
     pub partition_index: i32,
@@ -76,7 +78,9 @@ pub struct PartitionData {
     pub preferred_successors: Vec<i32>,
     /// A sorted list of preferred candidates to start the election.
     pub preferred_candidates: Vec<ReplicaInfo>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -165,13 +169,15 @@ impl PartitionData {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ReplicaInfo {
     /// The ID of the candidate replica.
     pub candidate_id: BrokerId,
     /// The directory ID of the candidate replica.
     pub candidate_directory_id: Uuid,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -211,7 +217,7 @@ impl ReplicaInfo {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct LeaderEndpoint {
     /// The name of the endpoint.
     pub name: StrBytes,
@@ -219,7 +225,9 @@ pub struct LeaderEndpoint {
     pub host: StrBytes,
     /// The node's port.
     pub port: u16,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -269,7 +277,7 @@ impl LeaderEndpoint {
 }
 
 /// Valid versions: 0-1.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct EndQuorumEpochRequest {
     /// The cluster id.
     pub cluster_id: Option<StrBytes>,
@@ -277,7 +285,9 @@ pub struct EndQuorumEpochRequest {
     pub topics: Vec<TopicData>,
     /// Endpoints for the leader.
     pub leader_endpoints: Vec<LeaderEndpoint>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

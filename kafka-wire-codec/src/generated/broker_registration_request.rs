@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,7 +6,7 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Listener {
     /// The name of the endpoint.
     pub name: StrBytes,
@@ -16,7 +16,9 @@ pub struct Listener {
     pub port: u16,
     /// The security protocol.
     pub security_protocol: i16,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -74,7 +76,7 @@ impl Listener {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Feature {
     /// The feature name.
     pub name: StrBytes,
@@ -82,7 +84,9 @@ pub struct Feature {
     pub min_supported_version: i16,
     /// The maximum supported feature level.
     pub max_supported_version: i16,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -132,7 +136,7 @@ impl Feature {
 }
 
 /// Valid versions: 0-4.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BrokerRegistrationRequest {
     /// The broker ID.
     pub broker_id: BrokerId,
@@ -152,7 +156,9 @@ pub struct BrokerRegistrationRequest {
     pub log_dirs: Vec<Uuid>,
     /// The epoch before a clean shutdown.
     pub previous_broker_epoch: i64,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

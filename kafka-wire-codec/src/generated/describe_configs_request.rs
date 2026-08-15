@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,7 +6,7 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DescribeConfigsResource {
     /// The resource type.
     pub resource_type: i8,
@@ -14,7 +14,9 @@ pub struct DescribeConfigsResource {
     pub resource_name: StrBytes,
     /// The configuration keys to list, or null to list all configuration keys.
     pub configuration_keys: Option<Vec<StrBytes>>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -101,7 +103,7 @@ impl DescribeConfigsResource {
 }
 
 /// Valid versions: 1-4.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct DescribeConfigsRequest {
     /// The resources whose configurations we want to describe.
     pub resources: Vec<DescribeConfigsResource>,
@@ -109,7 +111,9 @@ pub struct DescribeConfigsRequest {
     pub include_synonyms: bool,
     /// True if we should include configuration documentation.
     pub include_documentation: bool,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

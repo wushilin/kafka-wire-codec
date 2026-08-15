@@ -72,8 +72,10 @@ pub fn generate_message(spec: &MessageSpec) -> String {
     // Never-flexible messages fold their version guards away entirely, which
     // can leave `version` unused; bounded field ranges use the natural
     // `version >= a && version <= b` form. Not every message uses every typed
-    // import (Bytes/StrBytes/newtypes/Uuid), hence unused_imports.
-    out.push_str("#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]\n\n");
+    // import (Bytes/StrBytes/newtypes/Uuid), hence unused_imports. Tagged
+    // nullable fields reuse the generic nullable body under an is_some()
+    // presence check, whose never-taken expect branch trips unnecessary_unwrap.
+    out.push_str("#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]\n\n");
     out.push_str("use bytes::Bytes;\n");
     out.push_str("use uuid::Uuid;\n");
     out.push_str("use crate::codec::*;\n");
@@ -172,12 +174,17 @@ fn emit_struct(
 ) -> String {
     let mut out = String::new();
 
+    // Schema-declared tagged fields, ascending by tag (the wire order Kafka
+    // requires). They get typed struct fields; unknown tags stay in the raw
+    // `tagged_fields` bucket.
+    let mut tagged: Vec<&FieldSpec> = fields.iter().filter(|f| f.tag.is_some()).collect();
+    tagged.sort_by_key(|f| tag_number(f));
+
     // Emit a manual Default impl only when a schema default differs from the
     // derived zero-value default (Kafka semantics: e.g. FetchRequest
     // replica_id = -1, max_bytes = 0x7fffffff); derive it otherwise.
     let defaults: Vec<(String, String)> = fields
         .iter()
-        .filter(|f| f.tag.is_none())
         .map(|f| (field_ident(&f.name), default_value_expr(f)))
         .collect();
     let all_trivial = defaults.iter().all(|(_, expr)| {
@@ -192,15 +199,17 @@ fn emit_struct(
         out.push_str(&format!("/// {}\n", doc));
     }
     if all_trivial {
-        out.push_str("#[derive(Debug, Clone, Default)]\n");
+        out.push_str("#[derive(Debug, Clone, PartialEq, Default)]\n");
     } else {
-        out.push_str("#[derive(Debug, Clone)]\n");
+        out.push_str("#[derive(Debug, Clone, PartialEq)]\n");
     }
     out.push_str(&format!("pub struct {} {{\n", name));
     for field in fields {
         out.push_str(&generate_field_decl(field));
     }
-    out.push_str("    /// Raw tagged fields (flexible versions), in ascending tag order.\n");
+    out.push_str("    /// Unknown/raw tagged fields (flexible versions), ascending tag order.\n");
+    out.push_str("    /// Schema-declared tagged fields decode into their typed fields above,\n");
+    out.push_str("    /// not into this bucket.\n");
     out.push_str("    pub tagged_fields: Vec<(u32, Bytes)>,\n");
     out.push_str("}\n\n");
 
@@ -265,10 +274,33 @@ fn emit_struct(
         out.push_str(&generate_field_size(field, flex_min));
     }
     if flex_min != i16::MAX {
-        out.push_str(&format!(
-            "        {}\n",
-            flex_stmt(flex_min, "size += tagged_fields_size(&self.tagged_fields);")
-        ));
+        if tagged.is_empty() {
+            out.push_str(&format!(
+                "        {}\n",
+                flex_stmt(flex_min, "size += tagged_fields_size(&self.tagged_fields);")
+            ));
+        } else {
+            let mut blk = String::new();
+            blk.push_str("{\n");
+            blk.push_str("            let mut num_tagged = self.tagged_fields.len();\n");
+            blk.push_str("            let mut known_tagged_size = 0usize;\n");
+            for f in &tagged {
+                blk.push_str(&format!("            if {} {{\n", tagged_write_cond(f)));
+                blk.push_str("                num_tagged += 1;\n");
+                blk.push_str(&format!(
+                    "                let data_len = {{ let mut size = 0usize;\n{}                size }};\n",
+                    field_size_body(f, flex_min)
+                ));
+                blk.push_str(&format!(
+                    "                known_tagged_size += uvarint_size({}u64) + uvarint_size(data_len as u64) + data_len;\n",
+                    tag_number(f)
+                ));
+                blk.push_str("            }\n");
+            }
+            blk.push_str("            size += uvarint_size(num_tagged as u64) + known_tagged_size + raw_tagged_fields_size(&self.tagged_fields);\n");
+            blk.push_str("        }");
+            out.push_str(&format!("        {}\n", flex_stmt(flex_min, &blk)));
+        }
     }
     out.push_str("        size\n");
     out.push_str("    }\n\n");
@@ -281,10 +313,60 @@ fn emit_struct(
         out.push_str(&generate_field_encode(field, flex_min));
     }
     if flex_min != i16::MAX {
-        out.push_str(&format!(
-            "        {}\n",
-            flex_stmt(flex_min, "put_tagged_fields(buf, &self.tagged_fields);")
-        ));
+        if tagged.is_empty() {
+            out.push_str(&format!(
+                "        {}\n",
+                flex_stmt(flex_min, "put_tagged_fields(buf, &self.tagged_fields);")
+            ));
+        } else {
+            // Known (typed) tags and unknown raw tags are merged in ascending
+            // tag order — the order Kafka readers require.
+            let mut blk = String::new();
+            blk.push_str("{\n");
+            blk.push_str("            let mut num_tagged = self.tagged_fields.len();\n");
+            for f in &tagged {
+                blk.push_str(&format!(
+                    "            if {} {{ num_tagged += 1; }}\n",
+                    tagged_write_cond(f)
+                ));
+            }
+            blk.push_str("            put_uvarint(buf, num_tagged as u64);\n");
+            // A raw tag can only precede a known tag N > 0; when every known
+            // tag is 0, raw tags always trail and no merge cursor is needed.
+            let needs_merge = tagged.iter().any(|f| tag_number(f) > 0);
+            if needs_merge {
+                blk.push_str("            let mut raw_it = self.tagged_fields.iter().peekable();\n");
+            }
+            for f in &tagged {
+                let tag = tag_number(f);
+                blk.push_str(&format!("            if {} {{\n", tagged_write_cond(f)));
+                if tag > 0 {
+                    blk.push_str(&format!(
+                        "                while let Some((t, d)) = raw_it.peek() {{ if *t < {} {{ put_raw_tagged_field(buf, *t, d); raw_it.next(); }} else {{ break; }} }}\n",
+                        tag
+                    ));
+                }
+                blk.push_str(&format!("                put_uvarint(buf, {}u64);\n", tag));
+                blk.push_str(&format!(
+                    "                let data_len = {{ let mut size = 0usize;\n{}                size }};\n",
+                    field_size_body(f, flex_min)
+                ));
+                blk.push_str("                put_uvarint(buf, data_len as u64);\n");
+                blk.push_str(&field_encode_body(f, flex_min));
+                blk.push_str("            }\n");
+            }
+            if needs_merge {
+                blk.push_str(
+                    "            for (t, d) in raw_it { put_raw_tagged_field(buf, *t, d); }\n",
+                );
+            } else {
+                blk.push_str(
+                    "            for (t, d) in &self.tagged_fields { put_raw_tagged_field(buf, *t, d); }\n",
+                );
+            }
+            blk.push_str("        }");
+            out.push_str(&format!("        {}\n", flex_stmt(flex_min, &blk)));
+        }
     }
     out.push_str("    }\n\n");
 
@@ -302,10 +384,41 @@ fn emit_struct(
         out.push_str(&generate_field_decode(field, flex_min));
     }
     if flex_min != i16::MAX {
-        out.push_str(&format!(
-            "        {}\n",
-            flex_stmt(flex_min, "msg.tagged_fields = get_tagged_fields(buf)?;")
-        ));
+        if tagged.is_empty() {
+            out.push_str(&format!(
+                "        {}\n",
+                flex_stmt(flex_min, "msg.tagged_fields = get_tagged_fields(buf)?;")
+            ));
+        } else {
+            // Schema-known tags decode into their typed fields; anything else
+            // is preserved raw for round-trip fidelity.
+            let mut blk = String::new();
+            blk.push_str("{\n");
+            blk.push_str("            let count = get_uvarint32(buf)? as usize;\n");
+            blk.push_str("            let mut raw: Vec<(u32, Bytes)> = Vec::with_capacity(count.min(buf.len() / 2));\n");
+            blk.push_str("            for _ in 0..count {\n");
+            blk.push_str("                let (tag, mut data) = get_tagged_field(buf)?;\n");
+            blk.push_str("                match tag {\n");
+            for f in &tagged {
+                let guard = tagged_guard_expr(f);
+                let arm = if guard == "true" {
+                    format!("{}", tag_number(f))
+                } else {
+                    format!("{} if {}", tag_number(f), guard)
+                };
+                blk.push_str(&format!("                    {} => {{\n", arm));
+                blk.push_str("                        let buf = &mut data;\n");
+                blk.push_str(&field_decode_body(f, flex_min));
+                blk.push_str("                        if !buf.is_empty() { return Err(DecodeError::TrailingBytes { remaining: buf.len() }); }\n");
+                blk.push_str("                    }\n");
+            }
+            blk.push_str("                    _ => raw.push((tag, data)),\n");
+            blk.push_str("                }\n");
+            blk.push_str("            }\n");
+            blk.push_str("            msg.tagged_fields = raw;\n");
+            blk.push_str("        }");
+            out.push_str(&format!("        {}\n", flex_stmt(flex_min, &blk)));
+        }
     }
     out.push_str("        Ok(msg)\n");
     out.push_str("    }\n");
@@ -315,10 +428,6 @@ fn emit_struct(
 }
 
 fn generate_field_decl(field: &FieldSpec) -> String {
-    // Tagged fields are preserved via the raw tagged-fields section, not inline.
-    if field.tag.is_some() {
-        return String::new();
-    }
     let (rust_type, optional) = field_rust_type(field);
     let fname = field_ident(&field.name);
     let mut out = String::new();
@@ -326,6 +435,13 @@ fn generate_field_decl(field: &FieldSpec) -> String {
         out.push_str(&format!(
             "    /// {}\n",
             field.about.replace('\n', " ").trim()
+        ));
+    }
+    if field.tag.is_some() {
+        out.push_str(&format!(
+            "    /// Tagged field (tag {}, versions {}): encoded only when it differs from\n    /// the schema default; an omitted tag decodes to that default.\n",
+            tag_number(field),
+            field.tagged_versions
         ));
     }
     if optional {
@@ -350,8 +466,20 @@ fn generate_field_size(field: &FieldSpec, flex_min: i16) -> String {
     if field.tag.is_some() {
         return String::new();
     }
-    let fname = field_ident(&field.name);
     let (_, ver_min, ver_max) = field_version_guard(field);
+    let guard = version_guard_expr(ver_min, ver_max);
+    format!(
+        "{}{}        }}\n",
+        guard_open(&guard),
+        field_size_body(field, flex_min)
+    )
+}
+
+/// The size statements for one field, WITHOUT the version guard — reused by
+/// [`generate_field_size`] (which adds the guard) and by the tagged-fields
+/// section (which computes a tagged field's data length under its own guard).
+fn field_size_body(field: &FieldSpec, flex_min: i16) -> String {
+    let fname = field_ident(&field.name);
     let is_array = field.field_type.starts_with("[]");
     let nguard = nullable_guard(field);
     let inner_type = if is_array {
@@ -361,8 +489,6 @@ fn generate_field_size(field: &FieldSpec, flex_min: i16) -> String {
     };
 
     let mut lines = String::new();
-    let guard = version_guard_expr(ver_min, ver_max);
-    lines.push_str(&guard_open(&guard));
 
     if is_array {
         let elem_size = element_size_expr(&inner_type, "item", flex_min);
@@ -413,7 +539,6 @@ fn generate_field_size(field: &FieldSpec, flex_min: i16) -> String {
         ));
     }
 
-    lines.push_str("        }\n");
     lines
 }
 
@@ -421,8 +546,19 @@ fn generate_field_encode(field: &FieldSpec, flex_min: i16) -> String {
     if field.tag.is_some() {
         return String::new();
     }
-    let fname = field_ident(&field.name);
     let (_, ver_min, ver_max) = field_version_guard(field);
+    let guard = version_guard_expr(ver_min, ver_max);
+    format!(
+        "{}{}        }}\n",
+        guard_open(&guard),
+        field_encode_body(field, flex_min)
+    )
+}
+
+/// The encode statements for one field, WITHOUT the version guard — reused by
+/// [`generate_field_encode`] and by the tagged-fields section.
+fn field_encode_body(field: &FieldSpec, flex_min: i16) -> String {
+    let fname = field_ident(&field.name);
     let is_array = field.field_type.starts_with("[]");
     let nguard = nullable_guard(field);
     let inner_type = if is_array {
@@ -432,8 +568,6 @@ fn generate_field_encode(field: &FieldSpec, flex_min: i16) -> String {
     };
 
     let mut lines = String::new();
-    let guard = version_guard_expr(ver_min, ver_max);
-    lines.push_str(&guard_open(&guard));
 
     if is_array {
         let elem_enc = element_encode_expr(&inner_type, "item", flex_min, newtype_for(field));
@@ -481,7 +615,6 @@ fn generate_field_encode(field: &FieldSpec, flex_min: i16) -> String {
         ));
     }
 
-    lines.push_str("        }\n");
     lines
 }
 
@@ -489,8 +622,20 @@ fn generate_field_decode(field: &FieldSpec, flex_min: i16) -> String {
     if field.tag.is_some() {
         return String::new();
     }
-    let fname = field_ident(&field.name);
     let (_, ver_min, ver_max) = field_version_guard(field);
+    let guard = version_guard_expr(ver_min, ver_max);
+    format!(
+        "{}{}        }}\n",
+        guard_open(&guard),
+        field_decode_body(field, flex_min)
+    )
+}
+
+/// The decode statements for one field (assigning into `msg`), WITHOUT the
+/// version guard — reused by [`generate_field_decode`] and by the
+/// tagged-fields section (which decodes from the tagged data slice).
+fn field_decode_body(field: &FieldSpec, flex_min: i16) -> String {
+    let fname = field_ident(&field.name);
     let is_array = field.field_type.starts_with("[]");
     let nguard = nullable_guard(field);
     let inner_type = if is_array {
@@ -500,8 +645,6 @@ fn generate_field_decode(field: &FieldSpec, flex_min: i16) -> String {
     };
 
     let mut lines = String::new();
-    let guard = version_guard_expr(ver_min, ver_max);
-    lines.push_str(&guard_open(&guard));
 
     if is_array {
         let elem_dec = element_decode_expr(&inner_type, flex_min, newtype_for(field));
@@ -549,7 +692,6 @@ fn generate_field_decode(field: &FieldSpec, flex_min: i16) -> String {
         ));
     }
 
-    lines.push_str("        }\n");
     lines
 }
 
@@ -1035,6 +1177,66 @@ fn element_decode_expr(t: &str, flex_min: i16, nt: Option<&str>) -> String {
 fn field_version_guard(field: &FieldSpec) -> (String, i16, i16) {
     let (min, max) = parse_versions(&field.versions);
     (field.versions.clone(), min, max)
+}
+
+// ── Tagged-field helpers ──────────────────────────────────────────────────────
+
+/// The numeric tag of a tagged field (Kafka schemas encode it as a JSON number
+/// or string).
+fn tag_number(field: &FieldSpec) -> u32 {
+    match field.tag.as_ref() {
+        Some(serde_json::Value::Number(n)) => n.as_u64().expect("numeric tag") as u32,
+        Some(serde_json::Value::String(s)) => s.trim().parse().expect("numeric tag"),
+        other => panic!("field {} has non-numeric tag {:?}", field.name, other),
+    }
+}
+
+/// The version guard under which a tagged field is present in the tagged
+/// section. Kafka requires taggedVersions to be open-ended; we additionally
+/// require the field to be tagged for its whole lifetime (true of every schema
+/// to date) — otherwise the field would need a second, inline encoding path.
+fn tagged_guard_expr(field: &FieldSpec) -> String {
+    let (vmin, vmax) = parse_versions(&field.versions);
+    let (tagged_min, tagged_max) = parse_versions(&field.tagged_versions);
+    assert!(
+        tagged_max == i16::MAX,
+        "field {}: taggedVersions {:?} is not open-ended",
+        field.name,
+        field.tagged_versions
+    );
+    assert!(
+        tagged_min <= vmin,
+        "field {}: tagged only from v{} but exists from v{} — inline+tagged split is unsupported",
+        field.name,
+        tagged_min,
+        vmin
+    );
+    version_guard_expr(vmin, vmax)
+}
+
+/// The "should this tagged field be written?" expression: Kafka (and
+/// kafka-protocol) only encode a tagged field when its value differs from the
+/// schema default — an omitted tag decodes back to that default.
+fn tagged_presence_expr(field: &FieldSpec) -> String {
+    let fname = field_ident(&field.name);
+    match default_value_expr(field).as_str() {
+        "None" => format!("self.{}.is_some()", fname),
+        "Vec::new()" | "StrBytes::new()" | "Bytes::new()" => format!("!self.{}.is_empty()", fname),
+        "false" => format!("self.{}", fname),
+        "true" => format!("!self.{}", fname),
+        d => format!("self.{} != {}", fname, d),
+    }
+}
+
+/// Combine the tagged version guard and presence check into one `if` condition.
+fn tagged_write_cond(field: &FieldSpec) -> String {
+    let guard = tagged_guard_expr(field);
+    let present = tagged_presence_expr(field);
+    if guard == "true" {
+        present
+    } else {
+        format!("{} && ({})", guard, present)
+    }
 }
 
 fn version_guard_expr(min: i16, max: i16) -> String {

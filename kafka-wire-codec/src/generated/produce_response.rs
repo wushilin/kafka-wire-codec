@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,7 +6,7 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct TopicProduceResponse {
     /// The topic name.
     pub name: TopicName,
@@ -14,7 +14,9 @@ pub struct TopicProduceResponse {
     pub topic_id: Uuid,
     /// Each partition that we produced to within the topic.
     pub partition_responses: Vec<PartitionProduceResponse>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -75,7 +77,7 @@ impl TopicProduceResponse {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PartitionProduceResponse {
     /// The partition index.
     pub index: i32,
@@ -91,7 +93,13 @@ pub struct PartitionProduceResponse {
     pub record_errors: Vec<BatchIndexAndErrorMessage>,
     /// The global error message summarizing the common root cause of the records that caused the batch to be dropped.
     pub error_message: Option<StrBytes>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// The leader broker that the producer should use for future requests.
+    /// Tagged field (tag 0, versions 10+): encoded only when it differs from
+    /// the schema default; an omitted tag decodes to that default.
+    pub current_leader: LeaderIdAndEpoch,
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -105,6 +113,7 @@ impl Default for PartitionProduceResponse {
             log_start_offset: -1,
             record_errors: Vec::new(),
             error_message: None,
+            current_leader: LeaderIdAndEpoch::default(),
             tagged_fields: Vec::new(),
         }
     }
@@ -139,7 +148,18 @@ impl PartitionProduceResponse {
         if version >= 8 {
             size += if version >= 8 { if version >= 9 { compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } } else { let v = self.error_message.as_ref().expect("field error_message is None but not nullable at this version"); if version >= 9 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
-        if version >= 9 { size += tagged_fields_size(&self.tagged_fields); }
+        if version >= 9 { {
+            let mut num_tagged = self.tagged_fields.len();
+            let mut known_tagged_size = 0usize;
+            if version >= 10 && (self.current_leader != LeaderIdAndEpoch::default()) {
+                num_tagged += 1;
+                let data_len = { let mut size = 0usize;
+            size += self.current_leader.encoded_size(version);
+                size };
+                known_tagged_size += uvarint_size(0u64) + uvarint_size(data_len as u64) + data_len;
+            }
+            size += uvarint_size(num_tagged as u64) + known_tagged_size + raw_tagged_fields_size(&self.tagged_fields);
+        } }
         size
     }
 
@@ -168,7 +188,20 @@ impl PartitionProduceResponse {
         if version >= 8 {
             if version >= 8 { if version >= 9 { put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } } else { let v = self.error_message.as_ref().expect("field error_message is None but not nullable at this version"); if version >= 9 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
-        if version >= 9 { put_tagged_fields(buf, &self.tagged_fields); }
+        if version >= 9 { {
+            let mut num_tagged = self.tagged_fields.len();
+            if version >= 10 && (self.current_leader != LeaderIdAndEpoch::default()) { num_tagged += 1; }
+            put_uvarint(buf, num_tagged as u64);
+            if version >= 10 && (self.current_leader != LeaderIdAndEpoch::default()) {
+                put_uvarint(buf, 0u64);
+                let data_len = { let mut size = 0usize;
+            size += self.current_leader.encoded_size(version);
+                size };
+                put_uvarint(buf, data_len as u64);
+            self.current_leader.encode(version, buf);
+            }
+            for (t, d) in &self.tagged_fields { put_raw_tagged_field(buf, *t, d); }
+        } }
     }
 
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
@@ -198,18 +231,35 @@ impl PartitionProduceResponse {
         if version >= 8 {
             msg.error_message = { let v = if version >= 9 { get_compact_string(buf)? } else { get_string(buf)? }; if version >= 8 { v } else { Some(v.ok_or(DecodeError::NullForNonNullable)?) } };
         }
-        if version >= 9 { msg.tagged_fields = get_tagged_fields(buf)?; }
+        if version >= 9 { {
+            let count = get_uvarint32(buf)? as usize;
+            let mut raw: Vec<(u32, Bytes)> = Vec::with_capacity(count.min(buf.len() / 2));
+            for _ in 0..count {
+                let (tag, mut data) = get_tagged_field(buf)?;
+                match tag {
+                    0 if version >= 10 => {
+                        let buf = &mut data;
+            msg.current_leader = LeaderIdAndEpoch::decode(version, buf)?;
+                        if !buf.is_empty() { return Err(DecodeError::TrailingBytes { remaining: buf.len() }); }
+                    }
+                    _ => raw.push((tag, data)),
+                }
+            }
+            msg.tagged_fields = raw;
+        } }
         Ok(msg)
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct BatchIndexAndErrorMessage {
     /// The batch index of the record that caused the batch to be dropped.
     pub batch_index: i32,
     /// The error message of the record that caused the batch to be dropped.
     pub batch_index_error_message: Option<StrBytes>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -249,13 +299,15 @@ impl BatchIndexAndErrorMessage {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LeaderIdAndEpoch {
     /// The ID of the current leader or -1 if the leader is unknown.
     pub leader_id: BrokerId,
     /// The latest known leader epoch.
     pub leader_epoch: i32,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -305,7 +357,7 @@ impl LeaderIdAndEpoch {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct NodeEndpoint {
     /// The ID of the associated node.
     pub node_id: BrokerId,
@@ -315,7 +367,9 @@ pub struct NodeEndpoint {
     pub port: i32,
     /// The rack of the node, or null if it has not been assigned to a rack.
     pub rack: Option<StrBytes>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -374,13 +428,19 @@ impl NodeEndpoint {
 }
 
 /// Valid versions: 3-13.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ProduceResponse {
     /// Each produce response.
     pub responses: Vec<TopicProduceResponse>,
     /// The duration in milliseconds for which the request was throttled due to a quota violation, or zero if the request did not violate any quota.
     pub throttle_time_ms: i32,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Endpoints for all current-leaders enumerated in PartitionProduceResponses, with errors NOT_LEADER_OR_FOLLOWER.
+    /// Tagged field (tag 0, versions 10+): encoded only when it differs from
+    /// the schema default; an omitted tag decodes to that default.
+    pub node_endpoints: Vec<NodeEndpoint>,
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -406,7 +466,23 @@ impl ProduceResponse {
         if version >= 1 {
             size += 4;
         }
-        if version >= 9 { size += tagged_fields_size(&self.tagged_fields); }
+        if version >= 9 { {
+            let mut num_tagged = self.tagged_fields.len();
+            let mut known_tagged_size = 0usize;
+            if version >= 10 && (!self.node_endpoints.is_empty()) {
+                num_tagged += 1;
+                let data_len = { let mut size = 0usize;
+            { let arr = &self.node_endpoints;
+                if version >= 9 { size += uvarint_size(arr.len() as u64 + 1); } else { size += 4; }
+                for item in arr {
+                    size += item.encoded_size(version);
+                }
+            }
+                size };
+                known_tagged_size += uvarint_size(0u64) + uvarint_size(data_len as u64) + data_len;
+            }
+            size += uvarint_size(num_tagged as u64) + known_tagged_size + raw_tagged_fields_size(&self.tagged_fields);
+        } }
         size
     }
 
@@ -422,7 +498,28 @@ impl ProduceResponse {
         if version >= 1 {
             put_i32(buf, self.throttle_time_ms);
         }
-        if version >= 9 { put_tagged_fields(buf, &self.tagged_fields); }
+        if version >= 9 { {
+            let mut num_tagged = self.tagged_fields.len();
+            if version >= 10 && (!self.node_endpoints.is_empty()) { num_tagged += 1; }
+            put_uvarint(buf, num_tagged as u64);
+            if version >= 10 && (!self.node_endpoints.is_empty()) {
+                put_uvarint(buf, 0u64);
+                let data_len = { let mut size = 0usize;
+            { let arr = &self.node_endpoints;
+                if version >= 9 { size += uvarint_size(arr.len() as u64 + 1); } else { size += 4; }
+                for item in arr {
+                    size += item.encoded_size(version);
+                }
+            }
+                size };
+                put_uvarint(buf, data_len as u64);
+            { let arr = &self.node_endpoints;
+                if version >= 9 { put_uvarint(buf, arr.len() as u64 + 1); } else { put_i32(buf, arr.len() as i32); }
+                for item in arr { item.encode(version, buf); }
+            }
+            }
+            for (t, d) in &self.tagged_fields { put_raw_tagged_field(buf, *t, d); }
+        } }
     }
 
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
@@ -440,7 +537,26 @@ impl ProduceResponse {
         if version >= 1 {
             msg.throttle_time_ms = get_i32(buf)?;
         }
-        if version >= 9 { msg.tagged_fields = get_tagged_fields(buf)?; }
+        if version >= 9 { {
+            let count = get_uvarint32(buf)? as usize;
+            let mut raw: Vec<(u32, Bytes)> = Vec::with_capacity(count.min(buf.len() / 2));
+            for _ in 0..count {
+                let (tag, mut data) = get_tagged_field(buf)?;
+                match tag {
+                    0 if version >= 10 => {
+                        let buf = &mut data;
+            let len_opt = if version >= 9 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };
+            let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
+            { let mut items = Vec::with_capacity(count.min(buf.len()));
+                for _ in 0..count { items.push(NodeEndpoint::decode(version, buf)?); }
+            msg.node_endpoints = items; }
+                        if !buf.is_empty() { return Err(DecodeError::TrailingBytes { remaining: buf.len() }); }
+                    }
+                    _ => raw.push((tag, data)),
+                }
+            }
+            msg.tagged_fields = raw;
+        } }
         Ok(msg)
     }
 }

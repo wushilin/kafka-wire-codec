@@ -158,6 +158,12 @@ fn compat_roundtrip_all() {
     let mut failures: Vec<String> = Vec::new();
     // Every (api_key, is_request, version) cell exercised by the fixtures.
     let mut seen: std::collections::HashSet<(i16, bool, i16)> = std::collections::HashSet::new();
+    // Sentinels proving the Java populator fills schema-declared TAGGED fields
+    // with non-default values — otherwise the typed tagged-field codegen path
+    // would pass the byte-for-byte check vacuously (nothing to encode).
+    let mut fetch_node_endpoints_seen = false;
+    let mut produce_node_endpoints_seen = false;
+    let mut fetch_diverging_epoch_seen = false;
 
     for _ in 0..count {
         let api_key = r.get_i16();
@@ -181,6 +187,49 @@ fn compat_roundtrip_all() {
             label,
             body,
         };
+        // Tagged-field population sentinels (FetchResponse tag 0 at 16+,
+        // partition-level DivergingEpoch tag 0 at 12+, ProduceResponse tag 0
+        // at 10+).
+        if api_key == 1 && !is_request && version >= 12 {
+            let mut b = rec.body.clone();
+            if let Ok(m) =
+                kafka_wire_codec::generated::fetch_response::FetchResponse::decode(version, &mut b)
+            {
+                if version >= 16 && !m.node_endpoints.is_empty() {
+                    fetch_node_endpoints_seen = true;
+                }
+                if std::env::var("COMPAT_DEBUG_TAGGED").is_ok() {
+                    eprintln!(
+                        "fetch resp v{} [{}]: node_endpoints={} topics={} first_partition={:?}",
+                        version,
+                        rec.label,
+                        m.node_endpoints.len(),
+                        m.responses.len(),
+                        m.responses
+                            .first()
+                            .and_then(|t| t.partitions.first())
+                            .map(|p| (p.diverging_epoch.clone(), p.tagged_fields.len()))
+                    );
+                }
+                if m.responses.iter().flat_map(|t| t.partitions.iter()).any(|p| {
+                    p.diverging_epoch
+                        != kafka_wire_codec::generated::fetch_response::EpochEndOffset::default()
+                }) {
+                    fetch_diverging_epoch_seen = true;
+                }
+            }
+        }
+        if api_key == 0 && !is_request && version >= 10 {
+            let mut b = rec.body.clone();
+            if let Ok(m) = kafka_wire_codec::generated::produce_response::ProduceResponse::decode(
+                version, &mut b,
+            ) {
+                if !m.node_endpoints.is_empty() {
+                    produce_node_endpoints_seen = true;
+                }
+            }
+        }
+
         match check(&rec) {
             CheckResult::Ok => {
                 passed += 1;
@@ -255,6 +304,18 @@ fn compat_roundtrip_all() {
         defaults
     );
     assert!(passed > 0, "no records were checked");
+    assert!(
+        fetch_node_endpoints_seen,
+        "no fixture populated FetchResponse.node_endpoints (tag 0) — tagged-field coverage is vacuous"
+    );
+    assert!(
+        produce_node_endpoints_seen,
+        "no fixture populated ProduceResponse.node_endpoints (tag 0) — tagged-field coverage is vacuous"
+    );
+    assert!(
+        fetch_diverging_epoch_seen,
+        "no fixture populated FetchResponse partition diverging_epoch (tag 0) — tagged-field coverage is vacuous"
+    );
 }
 
 enum CheckResult {

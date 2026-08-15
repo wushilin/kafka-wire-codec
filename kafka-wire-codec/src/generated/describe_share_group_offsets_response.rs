@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,7 +6,7 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct DescribeShareGroupOffsetsResponseGroup {
     /// The group identifier.
     pub group_id: GroupId,
@@ -16,7 +16,9 @@ pub struct DescribeShareGroupOffsetsResponseGroup {
     pub error_code: i16,
     /// The group-level error message, or null if there was no error.
     pub error_message: Option<StrBytes>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -86,14 +88,16 @@ impl DescribeShareGroupOffsetsResponseGroup {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct DescribeShareGroupOffsetsResponseTopic {
     /// The topic name.
     pub topic_name: TopicName,
     /// The unique topic ID.
     pub topic_id: Uuid,
     pub partitions: Vec<DescribeShareGroupOffsetsResponsePartition>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -154,7 +158,7 @@ impl DescribeShareGroupOffsetsResponseTopic {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DescribeShareGroupOffsetsResponsePartition {
     /// The partition index.
     pub partition_index: i32,
@@ -168,7 +172,9 @@ pub struct DescribeShareGroupOffsetsResponsePartition {
     pub error_code: i16,
     /// The partition-level error message, or null if there was no error.
     pub error_message: Option<StrBytes>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -259,13 +265,15 @@ impl DescribeShareGroupOffsetsResponsePartition {
 }
 
 /// Valid versions: 0-1.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct DescribeShareGroupOffsetsResponse {
     /// The duration in milliseconds for which the request was throttled due to a quota violation, or zero if the request did not violate any quota.
     pub throttle_time_ms: i32,
     /// The results for each group.
     pub groups: Vec<DescribeShareGroupOffsetsResponseGroup>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

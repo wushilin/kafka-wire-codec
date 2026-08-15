@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,13 +6,15 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AddPartitionsToTxnTopic {
     /// The name of the topic.
     pub name: TopicName,
     /// The partition indexes to add to the transaction.
     pub partitions: Vec<i32>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -62,7 +64,7 @@ impl AddPartitionsToTxnTopic {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AddPartitionsToTxnTransaction {
     /// The transactional id corresponding to the transaction.
     pub transactional_id: TransactionalId,
@@ -74,7 +76,9 @@ pub struct AddPartitionsToTxnTransaction {
     pub verify_only: bool,
     /// The partitions to add to the transaction.
     pub topics: Vec<AddPartitionsToTxnTopic>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -154,7 +158,7 @@ impl AddPartitionsToTxnTransaction {
 }
 
 /// Valid versions: 0-5.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AddPartitionsToTxnRequest {
     /// List of transactions to add partitions to.
     pub transactions: Vec<AddPartitionsToTxnTransaction>,
@@ -166,7 +170,9 @@ pub struct AddPartitionsToTxnRequest {
     pub v3_and_below_producer_epoch: i16,
     /// The partitions to add to the transaction.
     pub v3_and_below_topics: Vec<AddPartitionsToTxnTopic>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

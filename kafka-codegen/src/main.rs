@@ -447,7 +447,7 @@ fn generate_kinds(entries: &[(i16, bool, String, String, i16, i16, i16)]) -> Str
         out.push_str(&format!(
             "/// Every Kafka {word}, as one typed enum: decode by api key, match by variant.\n"
         ));
-        out.push_str("#[derive(Debug, Clone)]\n");
+        out.push_str("#[derive(Debug, Clone, PartialEq)]\n");
         out.push_str(&format!("pub enum {} {{\n", kind));
         for (_, _, module, name, _, _, _) in &rows {
             out.push_str(&format!(

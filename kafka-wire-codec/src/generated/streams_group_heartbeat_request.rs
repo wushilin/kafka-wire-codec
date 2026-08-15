@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,13 +6,15 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct KeyValue {
     /// key of the config
     pub key: StrBytes,
     /// value of the config
     pub value: StrBytes,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -52,7 +54,7 @@ impl KeyValue {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct TopicInfo {
     /// The name of the topic.
     pub name: TopicName,
@@ -62,7 +64,9 @@ pub struct TopicInfo {
     pub replication_factor: i16,
     /// Topic-level configurations as key-value pairs.
     pub topic_configs: Vec<KeyValue>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -132,13 +136,15 @@ impl TopicInfo {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Endpoint {
     /// host of the endpoint
     pub host: StrBytes,
     /// port of the endpoint
     pub port: u16,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -178,7 +184,7 @@ impl Endpoint {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct TaskOffset {
     /// The subtopology identifier.
     pub subtopology_id: StrBytes,
@@ -186,7 +192,9 @@ pub struct TaskOffset {
     pub partition: i32,
     /// The offset.
     pub offset: i64,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -235,13 +243,15 @@ impl TaskOffset {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct TaskIds {
     /// The subtopology identifier.
     pub subtopology_id: StrBytes,
     /// The partitions of the input topics processed by this member.
     pub partitions: Vec<i32>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -291,13 +301,15 @@ impl TaskIds {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Topology {
     /// The epoch of the topology. Used to check if the topology corresponds to the topology initialized on the brokers.
     pub epoch: i32,
     /// The sub-topologies of the streams application.
     pub subtopologies: Vec<Subtopology>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -349,7 +361,7 @@ impl Topology {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Subtopology {
     /// String to uniquely identify the subtopology. Deterministically generated from the topology
     pub subtopology_id: StrBytes,
@@ -365,7 +377,9 @@ pub struct Subtopology {
     pub repartition_source_topics: Vec<TopicInfo>,
     /// A subset of source topics that must be copartitioned.
     pub copartition_groups: Vec<CopartitionGroup>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -522,7 +536,7 @@ impl Subtopology {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct CopartitionGroup {
     /// The topics the topology reads from. Index into the array on the subtopology level.
     pub source_topics: Vec<i16>,
@@ -530,7 +544,9 @@ pub struct CopartitionGroup {
     pub source_topic_regex: Vec<i16>,
     /// The set of source topics that are internally created repartition topics. Index into the array on the subtopology level.
     pub repartition_source_topics: Vec<i16>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -610,7 +626,7 @@ impl CopartitionGroup {
 }
 
 /// Valid versions: 0-0.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StreamsGroupHeartbeatRequest {
     /// The group identifier.
     pub group_id: GroupId,
@@ -646,7 +662,9 @@ pub struct StreamsGroupHeartbeatRequest {
     pub task_end_offsets: Option<Vec<TaskOffset>>,
     /// Whether all Streams clients in the group should shut down.
     pub shutdown_application: bool,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 

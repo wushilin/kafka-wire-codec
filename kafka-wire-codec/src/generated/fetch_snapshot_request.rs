@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,13 +6,15 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct TopicSnapshot {
     /// The name of the topic to fetch.
     pub name: TopicName,
     /// The partitions to fetch.
     pub partitions: Vec<PartitionSnapshot>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -64,7 +66,7 @@ impl TopicSnapshot {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct PartitionSnapshot {
     /// The partition index.
     pub partition: i32,
@@ -74,7 +76,13 @@ pub struct PartitionSnapshot {
     pub snapshot_id: SnapshotId,
     /// The byte position within the snapshot to start fetching from.
     pub position: i64,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// The directory id of the follower fetching.
+    /// Tagged field (tag 0, versions 1+): encoded only when it differs from
+    /// the schema default; an omitted tag decodes to that default.
+    pub replica_directory_id: Uuid,
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -93,7 +101,18 @@ impl PartitionSnapshot {
         {
             size += 8;
         }
-        size += tagged_fields_size(&self.tagged_fields);
+        {
+            let mut num_tagged = self.tagged_fields.len();
+            let mut known_tagged_size = 0usize;
+            if version >= 1 && (self.replica_directory_id != Uuid::nil()) {
+                num_tagged += 1;
+                let data_len = { let mut size = 0usize;
+            size += 16;
+                size };
+                known_tagged_size += uvarint_size(0u64) + uvarint_size(data_len as u64) + data_len;
+            }
+            size += uvarint_size(num_tagged as u64) + known_tagged_size + raw_tagged_fields_size(&self.tagged_fields);
+        }
         size
     }
 
@@ -110,7 +129,20 @@ impl PartitionSnapshot {
         {
             put_i64(buf, self.position);
         }
-        put_tagged_fields(buf, &self.tagged_fields);
+        {
+            let mut num_tagged = self.tagged_fields.len();
+            if version >= 1 && (self.replica_directory_id != Uuid::nil()) { num_tagged += 1; }
+            put_uvarint(buf, num_tagged as u64);
+            if version >= 1 && (self.replica_directory_id != Uuid::nil()) {
+                put_uvarint(buf, 0u64);
+                let data_len = { let mut size = 0usize;
+            size += 16;
+                size };
+                put_uvarint(buf, data_len as u64);
+            put_uuid(buf, &self.replica_directory_id);
+            }
+            for (t, d) in &self.tagged_fields { put_raw_tagged_field(buf, *t, d); }
+        }
     }
 
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
@@ -127,18 +159,35 @@ impl PartitionSnapshot {
         {
             msg.position = get_i64(buf)?;
         }
-        msg.tagged_fields = get_tagged_fields(buf)?;
+        {
+            let count = get_uvarint32(buf)? as usize;
+            let mut raw: Vec<(u32, Bytes)> = Vec::with_capacity(count.min(buf.len() / 2));
+            for _ in 0..count {
+                let (tag, mut data) = get_tagged_field(buf)?;
+                match tag {
+                    0 if version >= 1 => {
+                        let buf = &mut data;
+            msg.replica_directory_id = get_uuid(buf)?;
+                        if !buf.is_empty() { return Err(DecodeError::TrailingBytes { remaining: buf.len() }); }
+                    }
+                    _ => raw.push((tag, data)),
+                }
+            }
+            msg.tagged_fields = raw;
+        }
         Ok(msg)
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct SnapshotId {
     /// The end offset of the snapshot.
     pub end_offset: i64,
     /// The epoch of the snapshot.
     pub epoch: i32,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -179,21 +228,28 @@ impl SnapshotId {
 }
 
 /// Valid versions: 0-1.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FetchSnapshotRequest {
+    /// The clusterId if known, this is used to validate metadata fetches prior to broker registration.
+    /// Tagged field (tag 0, versions 0+): encoded only when it differs from
+    /// the schema default; an omitted tag decodes to that default.
+    pub cluster_id: Option<StrBytes>,
     /// The broker ID of the follower.
     pub replica_id: BrokerId,
     /// The maximum bytes to fetch from all of the snapshots.
     pub max_bytes: i32,
     /// The topics to fetch.
     pub topics: Vec<TopicSnapshot>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
 impl Default for FetchSnapshotRequest {
     fn default() -> Self {
         Self {
+            cluster_id: None,
             replica_id: BrokerId(-1),
             max_bytes: 0x7fffffff,
             topics: Vec::new(),
@@ -227,7 +283,18 @@ impl FetchSnapshotRequest {
                 }
             }
         }
-        size += tagged_fields_size(&self.tagged_fields);
+        {
+            let mut num_tagged = self.tagged_fields.len();
+            let mut known_tagged_size = 0usize;
+            if self.cluster_id.is_some() {
+                num_tagged += 1;
+                let data_len = { let mut size = 0usize;
+            size += compact_nullable_string_size(self.cluster_id.as_ref().map(|v| v.as_str()));
+                size };
+                known_tagged_size += uvarint_size(0u64) + uvarint_size(data_len as u64) + data_len;
+            }
+            size += uvarint_size(num_tagged as u64) + known_tagged_size + raw_tagged_fields_size(&self.tagged_fields);
+        }
         size
     }
 
@@ -246,7 +313,20 @@ impl FetchSnapshotRequest {
                 for item in arr { item.encode(version, buf); }
             }
         }
-        put_tagged_fields(buf, &self.tagged_fields);
+        {
+            let mut num_tagged = self.tagged_fields.len();
+            if self.cluster_id.is_some() { num_tagged += 1; }
+            put_uvarint(buf, num_tagged as u64);
+            if self.cluster_id.is_some() {
+                put_uvarint(buf, 0u64);
+                let data_len = { let mut size = 0usize;
+            size += compact_nullable_string_size(self.cluster_id.as_ref().map(|v| v.as_str()));
+                size };
+                put_uvarint(buf, data_len as u64);
+            put_compact_nullable_string(buf, self.cluster_id.as_ref().map(|v| v.as_str()));
+            }
+            for (t, d) in &self.tagged_fields { put_raw_tagged_field(buf, *t, d); }
+        }
     }
 
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
@@ -267,7 +347,22 @@ impl FetchSnapshotRequest {
                 for _ in 0..count { items.push(TopicSnapshot::decode(version, buf)?); }
             msg.topics = items; }
         }
-        msg.tagged_fields = get_tagged_fields(buf)?;
+        {
+            let count = get_uvarint32(buf)? as usize;
+            let mut raw: Vec<(u32, Bytes)> = Vec::with_capacity(count.min(buf.len() / 2));
+            for _ in 0..count {
+                let (tag, mut data) = get_tagged_field(buf)?;
+                match tag {
+                    0 => {
+                        let buf = &mut data;
+            msg.cluster_id = get_compact_string(buf)?;
+                        if !buf.is_empty() { return Err(DecodeError::TrailingBytes { remaining: buf.len() }); }
+                    }
+                    _ => raw.push((tag, data)),
+                }
+            }
+            msg.tagged_fields = raw;
+        }
         Ok(msg)
     }
 }

@@ -1,4 +1,4 @@
-#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]
 
 use bytes::Bytes;
 use uuid::Uuid;
@@ -6,13 +6,15 @@ use crate::codec::*;
 use crate::error::DecodeError;
 use crate::types::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReplicaState {
     /// The replica ID of the follower, or -1 if this request is from a consumer.
     pub replica_id: BrokerId,
     /// The epoch of this follower, or -1 if not available.
     pub replica_epoch: i64,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -62,7 +64,7 @@ impl ReplicaState {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct FetchTopic {
     /// The name of the topic to fetch.
     pub topic: TopicName,
@@ -70,7 +72,9 @@ pub struct FetchTopic {
     pub topic_id: Uuid,
     /// The partitions to fetch.
     pub partitions: Vec<FetchPartition>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -131,7 +135,7 @@ impl FetchTopic {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FetchPartition {
     /// The partition index.
     pub partition: i32,
@@ -145,7 +149,17 @@ pub struct FetchPartition {
     pub log_start_offset: i64,
     /// The maximum bytes to fetch from this partition.  See KIP-74 for cases where this limit may not be honored.
     pub partition_max_bytes: i32,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// The directory id of the follower fetching.
+    /// Tagged field (tag 0, versions 17+): encoded only when it differs from
+    /// the schema default; an omitted tag decodes to that default.
+    pub replica_directory_id: Uuid,
+    /// The high-watermark known by the replica. -1 if the high-watermark is not known and 9223372036854775807 if the feature is not supported.
+    /// Tagged field (tag 1, versions 18+): encoded only when it differs from
+    /// the schema default; an omitted tag decodes to that default.
+    pub high_watermark: i64,
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -158,6 +172,8 @@ impl Default for FetchPartition {
             last_fetched_epoch: -1,
             log_start_offset: -1,
             partition_max_bytes: 0,
+            replica_directory_id: Uuid::nil(),
+            high_watermark: 9223372036854775807,
             tagged_fields: Vec::new(),
         }
     }
@@ -184,7 +200,25 @@ impl FetchPartition {
         {
             size += 4;
         }
-        if version >= 12 { size += tagged_fields_size(&self.tagged_fields); }
+        if version >= 12 { {
+            let mut num_tagged = self.tagged_fields.len();
+            let mut known_tagged_size = 0usize;
+            if version >= 17 && (self.replica_directory_id != Uuid::nil()) {
+                num_tagged += 1;
+                let data_len = { let mut size = 0usize;
+            size += 16;
+                size };
+                known_tagged_size += uvarint_size(0u64) + uvarint_size(data_len as u64) + data_len;
+            }
+            if version >= 18 && (self.high_watermark != 9223372036854775807) {
+                num_tagged += 1;
+                let data_len = { let mut size = 0usize;
+            size += 8;
+                size };
+                known_tagged_size += uvarint_size(1u64) + uvarint_size(data_len as u64) + data_len;
+            }
+            size += uvarint_size(num_tagged as u64) + known_tagged_size + raw_tagged_fields_size(&self.tagged_fields);
+        } }
         size
     }
 
@@ -207,7 +241,31 @@ impl FetchPartition {
         {
             put_i32(buf, self.partition_max_bytes);
         }
-        if version >= 12 { put_tagged_fields(buf, &self.tagged_fields); }
+        if version >= 12 { {
+            let mut num_tagged = self.tagged_fields.len();
+            if version >= 17 && (self.replica_directory_id != Uuid::nil()) { num_tagged += 1; }
+            if version >= 18 && (self.high_watermark != 9223372036854775807) { num_tagged += 1; }
+            put_uvarint(buf, num_tagged as u64);
+            let mut raw_it = self.tagged_fields.iter().peekable();
+            if version >= 17 && (self.replica_directory_id != Uuid::nil()) {
+                put_uvarint(buf, 0u64);
+                let data_len = { let mut size = 0usize;
+            size += 16;
+                size };
+                put_uvarint(buf, data_len as u64);
+            put_uuid(buf, &self.replica_directory_id);
+            }
+            if version >= 18 && (self.high_watermark != 9223372036854775807) {
+                while let Some((t, d)) = raw_it.peek() { if *t < 1 { put_raw_tagged_field(buf, *t, d); raw_it.next(); } else { break; } }
+                put_uvarint(buf, 1u64);
+                let data_len = { let mut size = 0usize;
+            size += 8;
+                size };
+                put_uvarint(buf, data_len as u64);
+            put_i64(buf, self.high_watermark);
+            }
+            for (t, d) in raw_it { put_raw_tagged_field(buf, *t, d); }
+        } }
     }
 
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
@@ -230,12 +288,32 @@ impl FetchPartition {
         {
             msg.partition_max_bytes = get_i32(buf)?;
         }
-        if version >= 12 { msg.tagged_fields = get_tagged_fields(buf)?; }
+        if version >= 12 { {
+            let count = get_uvarint32(buf)? as usize;
+            let mut raw: Vec<(u32, Bytes)> = Vec::with_capacity(count.min(buf.len() / 2));
+            for _ in 0..count {
+                let (tag, mut data) = get_tagged_field(buf)?;
+                match tag {
+                    0 if version >= 17 => {
+                        let buf = &mut data;
+            msg.replica_directory_id = get_uuid(buf)?;
+                        if !buf.is_empty() { return Err(DecodeError::TrailingBytes { remaining: buf.len() }); }
+                    }
+                    1 if version >= 18 => {
+                        let buf = &mut data;
+            msg.high_watermark = get_i64(buf)?;
+                        if !buf.is_empty() { return Err(DecodeError::TrailingBytes { remaining: buf.len() }); }
+                    }
+                    _ => raw.push((tag, data)),
+                }
+            }
+            msg.tagged_fields = raw;
+        } }
         Ok(msg)
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ForgottenTopic {
     /// The topic name.
     pub topic: TopicName,
@@ -243,7 +321,9 @@ pub struct ForgottenTopic {
     pub topic_id: Uuid,
     /// The partitions indexes to forget.
     pub partitions: Vec<i32>,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
@@ -303,10 +383,18 @@ impl ForgottenTopic {
 }
 
 /// Valid versions: 4-18.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FetchRequest {
+    /// The clusterId if known. This is used to validate metadata fetches prior to broker registration.
+    /// Tagged field (tag 0, versions 12+): encoded only when it differs from
+    /// the schema default; an omitted tag decodes to that default.
+    pub cluster_id: Option<StrBytes>,
     /// The broker ID of the follower, of -1 if this request is from a consumer.
     pub replica_id: BrokerId,
+    /// The state of the replica in the follower.
+    /// Tagged field (tag 1, versions 15+): encoded only when it differs from
+    /// the schema default; an omitted tag decodes to that default.
+    pub replica_state: ReplicaState,
     /// The maximum time in milliseconds to wait for the response.
     pub max_wait_ms: i32,
     /// The minimum bytes to accumulate in the response.
@@ -325,14 +413,18 @@ pub struct FetchRequest {
     pub forgotten_topics_data: Vec<ForgottenTopic>,
     /// Rack ID of the consumer making this request.
     pub rack_id: StrBytes,
-    /// Raw tagged fields (flexible versions), in ascending tag order.
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    /// Schema-declared tagged fields decode into their typed fields above,
+    /// not into this bucket.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
 
 impl Default for FetchRequest {
     fn default() -> Self {
         Self {
+            cluster_id: None,
             replica_id: BrokerId(-1),
+            replica_state: ReplicaState::default(),
             max_wait_ms: 0,
             min_bytes: 0,
             max_bytes: 0x7fffffff,
@@ -398,7 +490,25 @@ impl FetchRequest {
         if version >= 11 {
             size += if version >= 12 { compact_string_size(self.rack_id.as_str()) } else { string_size(self.rack_id.as_str()) };
         }
-        if version >= 12 { size += tagged_fields_size(&self.tagged_fields); }
+        if version >= 12 { {
+            let mut num_tagged = self.tagged_fields.len();
+            let mut known_tagged_size = 0usize;
+            if version >= 12 && (self.cluster_id.is_some()) {
+                num_tagged += 1;
+                let data_len = { let mut size = 0usize;
+            size += if version >= 12 { if version >= 12 { compact_nullable_string_size(self.cluster_id.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.cluster_id.as_ref().map(|v| v.as_str())) } } else { let v = self.cluster_id.as_ref().expect("field cluster_id is None but not nullable at this version"); if version >= 12 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
+                size };
+                known_tagged_size += uvarint_size(0u64) + uvarint_size(data_len as u64) + data_len;
+            }
+            if version >= 15 && (self.replica_state != ReplicaState::default()) {
+                num_tagged += 1;
+                let data_len = { let mut size = 0usize;
+            size += self.replica_state.encoded_size(version);
+                size };
+                known_tagged_size += uvarint_size(1u64) + uvarint_size(data_len as u64) + data_len;
+            }
+            size += uvarint_size(num_tagged as u64) + known_tagged_size + raw_tagged_fields_size(&self.tagged_fields);
+        } }
         size
     }
 
@@ -441,7 +551,31 @@ impl FetchRequest {
         if version >= 11 {
             if version >= 12 { put_compact_string(buf, self.rack_id.as_str()) } else { put_string(buf, self.rack_id.as_str()) };
         }
-        if version >= 12 { put_tagged_fields(buf, &self.tagged_fields); }
+        if version >= 12 { {
+            let mut num_tagged = self.tagged_fields.len();
+            if version >= 12 && (self.cluster_id.is_some()) { num_tagged += 1; }
+            if version >= 15 && (self.replica_state != ReplicaState::default()) { num_tagged += 1; }
+            put_uvarint(buf, num_tagged as u64);
+            let mut raw_it = self.tagged_fields.iter().peekable();
+            if version >= 12 && (self.cluster_id.is_some()) {
+                put_uvarint(buf, 0u64);
+                let data_len = { let mut size = 0usize;
+            size += if version >= 12 { if version >= 12 { compact_nullable_string_size(self.cluster_id.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.cluster_id.as_ref().map(|v| v.as_str())) } } else { let v = self.cluster_id.as_ref().expect("field cluster_id is None but not nullable at this version"); if version >= 12 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
+                size };
+                put_uvarint(buf, data_len as u64);
+            if version >= 12 { if version >= 12 { put_compact_nullable_string(buf, self.cluster_id.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.cluster_id.as_ref().map(|v| v.as_str())) } } else { let v = self.cluster_id.as_ref().expect("field cluster_id is None but not nullable at this version"); if version >= 12 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
+            }
+            if version >= 15 && (self.replica_state != ReplicaState::default()) {
+                while let Some((t, d)) = raw_it.peek() { if *t < 1 { put_raw_tagged_field(buf, *t, d); raw_it.next(); } else { break; } }
+                put_uvarint(buf, 1u64);
+                let data_len = { let mut size = 0usize;
+            size += self.replica_state.encoded_size(version);
+                size };
+                put_uvarint(buf, data_len as u64);
+            self.replica_state.encode(version, buf);
+            }
+            for (t, d) in raw_it { put_raw_tagged_field(buf, *t, d); }
+        } }
     }
 
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
@@ -487,7 +621,27 @@ impl FetchRequest {
         if version >= 11 {
             msg.rack_id = (if version >= 12 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
         }
-        if version >= 12 { msg.tagged_fields = get_tagged_fields(buf)?; }
+        if version >= 12 { {
+            let count = get_uvarint32(buf)? as usize;
+            let mut raw: Vec<(u32, Bytes)> = Vec::with_capacity(count.min(buf.len() / 2));
+            for _ in 0..count {
+                let (tag, mut data) = get_tagged_field(buf)?;
+                match tag {
+                    0 if version >= 12 => {
+                        let buf = &mut data;
+            msg.cluster_id = { let v = if version >= 12 { get_compact_string(buf)? } else { get_string(buf)? }; if version >= 12 { v } else { Some(v.ok_or(DecodeError::NullForNonNullable)?) } };
+                        if !buf.is_empty() { return Err(DecodeError::TrailingBytes { remaining: buf.len() }); }
+                    }
+                    1 if version >= 15 => {
+                        let buf = &mut data;
+            msg.replica_state = ReplicaState::decode(version, buf)?;
+                        if !buf.is_empty() { return Err(DecodeError::TrailingBytes { remaining: buf.len() }); }
+                    }
+                    _ => raw.push((tag, data)),
+                }
+            }
+            msg.tagged_fields = raw;
+        } }
         Ok(msg)
     }
 }
