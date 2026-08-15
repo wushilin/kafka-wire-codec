@@ -3,7 +3,7 @@
 use bytes::Bytes;
 use uuid::Uuid;
 use crate::codec::*;
-use crate::error::DecodeError;
+use crate::error::{DecodeError, EncodeError};
 use crate::types::*;
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -420,9 +420,10 @@ impl OffsetFetchResponse {
     /// First flexible (tagged-fields) version; `i16::MAX` if never flexible.
     pub const FLEXIBLE_MIN_VERSION: i16 = 6;
 
-    pub fn encoded_size(&self, version: i16) -> usize {
-        assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
-            "unsupported version {} for api key {}", version, Self::API_KEY);
+    pub fn encoded_size(&self, version: i16) -> Result<usize, EncodeError> {
+        if !(Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version) {
+            return Err(EncodeError::UnsupportedVersion { api_key: Self::API_KEY, version });
+        }
         let mut size = 0usize;
         if version >= 3 {
             size += 4;
@@ -447,12 +448,13 @@ impl OffsetFetchResponse {
             }
         }
         if version >= 6 { size += tagged_fields_size(&self.tagged_fields); }
-        size
+        Ok(size)
     }
 
-    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
-        assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
-            "unsupported version {} for api key {}", version, Self::API_KEY);
+    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) -> Result<(), EncodeError> {
+        if !(Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version) {
+            return Err(EncodeError::UnsupportedVersion { api_key: Self::API_KEY, version });
+        }
         if version >= 3 {
             put_i32(buf, self.throttle_time_ms);
         }
@@ -472,6 +474,7 @@ impl OffsetFetchResponse {
             }
         }
         if version >= 6 { put_tagged_fields(buf, &self.tagged_fields); }
+        Ok(())
     }
 
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
@@ -509,11 +512,11 @@ impl crate::Encodable for OffsetFetchResponse {
     const VALID_MIN_VERSION: i16 = 1;
     const VALID_MAX_VERSION: i16 = 10;
     const FLEXIBLE_MIN_VERSION: i16 = 6;
-    fn wire_size(&self, version: i16) -> usize { self.encoded_size(version) }
-    fn write(&self, version: i16, buf: &mut bytes::BytesMut) { self.encode(version, buf) }
+    fn wire_size(&self, version: i16) -> Result<usize, EncodeError> { self.encoded_size(version) }
+    fn write(&self, version: i16, buf: &mut bytes::BytesMut) -> Result<(), EncodeError> { self.encode(version, buf) }
     fn read(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> { Self::decode(version, buf) }
 }
 
 impl crate::EncodableZeroCopy for OffsetFetchResponse {
-    fn write_segmented(&self, version: i16, buf: &mut SegmentedBuf) { self.encode(version, buf) }
+    fn write_segmented(&self, version: i16, buf: &mut SegmentedBuf) -> Result<(), EncodeError> { self.encode(version, buf) }
 }

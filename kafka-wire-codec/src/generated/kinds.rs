@@ -1,7 +1,7 @@
 // Generated typed dispatch enums — do not edit.
 use bytes::{Bytes, BytesMut};
-use crate::codec::WireBuf;
-use crate::error::DecodeError;
+use crate::codec::{SegmentedBuf, WireBuf};
+use crate::error::{DecodeError, EncodeError};
 
 /// Every Kafka request, as one typed enum: decode by api key, match by variant.
 #[derive(Debug, Clone, PartialEq)]
@@ -402,7 +402,7 @@ impl RequestKind {
     }
 
     /// Exact encoded size at `version` (size-first encoding).
-    pub fn encoded_size(&self, version: i16) -> usize {
+    pub fn encoded_size(&self, version: i16) -> Result<usize, EncodeError> {
         match self {
             Self::Produce(m) => m.encoded_size(version),
             Self::Fetch(m) => m.encoded_size(version),
@@ -501,7 +501,7 @@ impl RequestKind {
     }
 
     /// Encode the contained message at `version`.
-    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
+    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) -> Result<(), EncodeError> {
         match self {
             Self::Produce(m) => m.encode(version, buf),
             Self::Fetch(m) => m.encode(version, buf),
@@ -600,10 +600,19 @@ impl RequestKind {
     }
 
     /// Size-first encode into a freshly allocated, exact-capacity buffer.
-    pub fn to_bytes(&self, version: i16) -> BytesMut {
-        let mut buf = BytesMut::with_capacity(self.encoded_size(version));
-        self.encode(version, &mut buf);
-        buf
+    pub fn to_bytes(&self, version: i16) -> Result<BytesMut, EncodeError> {
+        let mut buf = BytesMut::with_capacity(self.encoded_size(version)?);
+        self.encode(version, &mut buf)?;
+        Ok(buf)
+    }
+
+    /// Zero-copy, single-pass encode (the enum-level analogue of
+    /// `EncodableZeroCopy::to_segments`): large `Bytes` payloads become
+    /// refcounted segments instead of being copied.
+    pub fn to_segments(&self, version: i16) -> Result<SegmentedBuf, EncodeError> {
+        let mut buf = SegmentedBuf::new();
+        self.encode(version, &mut buf)?;
+        Ok(buf)
     }
 }
 
@@ -1564,7 +1573,7 @@ impl ResponseKind {
     }
 
     /// Exact encoded size at `version` (size-first encoding).
-    pub fn encoded_size(&self, version: i16) -> usize {
+    pub fn encoded_size(&self, version: i16) -> Result<usize, EncodeError> {
         match self {
             Self::Produce(m) => m.encoded_size(version),
             Self::Fetch(m) => m.encoded_size(version),
@@ -1663,7 +1672,7 @@ impl ResponseKind {
     }
 
     /// Encode the contained message at `version`.
-    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
+    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) -> Result<(), EncodeError> {
         match self {
             Self::Produce(m) => m.encode(version, buf),
             Self::Fetch(m) => m.encode(version, buf),
@@ -1762,10 +1771,19 @@ impl ResponseKind {
     }
 
     /// Size-first encode into a freshly allocated, exact-capacity buffer.
-    pub fn to_bytes(&self, version: i16) -> BytesMut {
-        let mut buf = BytesMut::with_capacity(self.encoded_size(version));
-        self.encode(version, &mut buf);
-        buf
+    pub fn to_bytes(&self, version: i16) -> Result<BytesMut, EncodeError> {
+        let mut buf = BytesMut::with_capacity(self.encoded_size(version)?);
+        self.encode(version, &mut buf)?;
+        Ok(buf)
+    }
+
+    /// Zero-copy, single-pass encode (the enum-level analogue of
+    /// `EncodableZeroCopy::to_segments`): large `Bytes` payloads become
+    /// refcounted segments instead of being copied.
+    pub fn to_segments(&self, version: i16) -> Result<SegmentedBuf, EncodeError> {
+        let mut buf = SegmentedBuf::new();
+        self.encode(version, &mut buf)?;
+        Ok(buf)
     }
 }
 

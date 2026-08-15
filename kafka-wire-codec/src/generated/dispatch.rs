@@ -598,1118 +598,1118 @@ pub fn roundtrip(api_key: i16, is_request: bool, version: i16, body: &Bytes)
     let encoded = match (api_key, is_request) {
         (0, true) => {
             let m = super::produce_request::ProduceRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (0, false) => {
             let m = super::produce_response::ProduceResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (1, true) => {
             let m = super::fetch_request::FetchRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (1, false) => {
             let m = super::fetch_response::FetchResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (2, true) => {
             let m = super::list_offsets_request::ListOffsetsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (2, false) => {
             let m = super::list_offsets_response::ListOffsetsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (3, true) => {
             let m = super::metadata_request::MetadataRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (3, false) => {
             let m = super::metadata_response::MetadataResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (4, true) => {
             let m = super::leader_and_isr_request::LeaderAndIsrRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (4, false) => {
             let m = super::leader_and_isr_response::LeaderAndIsrResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (5, true) => {
             let m = super::stop_replica_request::StopReplicaRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (5, false) => {
             let m = super::stop_replica_response::StopReplicaResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (6, true) => {
             let m = super::update_metadata_request::UpdateMetadataRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (6, false) => {
             let m = super::update_metadata_response::UpdateMetadataResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (7, true) => {
             let m = super::controlled_shutdown_request::ControlledShutdownRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (7, false) => {
             let m = super::controlled_shutdown_response::ControlledShutdownResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (8, true) => {
             let m = super::offset_commit_request::OffsetCommitRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (8, false) => {
             let m = super::offset_commit_response::OffsetCommitResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (9, true) => {
             let m = super::offset_fetch_request::OffsetFetchRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (9, false) => {
             let m = super::offset_fetch_response::OffsetFetchResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (10, true) => {
             let m = super::find_coordinator_request::FindCoordinatorRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (10, false) => {
             let m = super::find_coordinator_response::FindCoordinatorResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (11, true) => {
             let m = super::join_group_request::JoinGroupRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (11, false) => {
             let m = super::join_group_response::JoinGroupResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (12, true) => {
             let m = super::heartbeat_request::HeartbeatRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (12, false) => {
             let m = super::heartbeat_response::HeartbeatResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (13, true) => {
             let m = super::leave_group_request::LeaveGroupRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (13, false) => {
             let m = super::leave_group_response::LeaveGroupResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (14, true) => {
             let m = super::sync_group_request::SyncGroupRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (14, false) => {
             let m = super::sync_group_response::SyncGroupResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (15, true) => {
             let m = super::describe_groups_request::DescribeGroupsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (15, false) => {
             let m = super::describe_groups_response::DescribeGroupsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (16, true) => {
             let m = super::list_groups_request::ListGroupsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (16, false) => {
             let m = super::list_groups_response::ListGroupsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (17, true) => {
             let m = super::sasl_handshake_request::SaslHandshakeRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (17, false) => {
             let m = super::sasl_handshake_response::SaslHandshakeResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (18, true) => {
             let m = super::api_versions_request::ApiVersionsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (18, false) => {
             let m = super::api_versions_response::ApiVersionsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (19, true) => {
             let m = super::create_topics_request::CreateTopicsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (19, false) => {
             let m = super::create_topics_response::CreateTopicsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (20, true) => {
             let m = super::delete_topics_request::DeleteTopicsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (20, false) => {
             let m = super::delete_topics_response::DeleteTopicsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (21, true) => {
             let m = super::delete_records_request::DeleteRecordsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (21, false) => {
             let m = super::delete_records_response::DeleteRecordsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (22, true) => {
             let m = super::init_producer_id_request::InitProducerIdRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (22, false) => {
             let m = super::init_producer_id_response::InitProducerIdResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (23, true) => {
             let m = super::offset_for_leader_epoch_request::OffsetForLeaderEpochRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (23, false) => {
             let m = super::offset_for_leader_epoch_response::OffsetForLeaderEpochResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (24, true) => {
             let m = super::add_partitions_to_txn_request::AddPartitionsToTxnRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (24, false) => {
             let m = super::add_partitions_to_txn_response::AddPartitionsToTxnResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (25, true) => {
             let m = super::add_offsets_to_txn_request::AddOffsetsToTxnRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (25, false) => {
             let m = super::add_offsets_to_txn_response::AddOffsetsToTxnResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (26, true) => {
             let m = super::end_txn_request::EndTxnRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (26, false) => {
             let m = super::end_txn_response::EndTxnResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (27, true) => {
             let m = super::write_txn_markers_request::WriteTxnMarkersRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (27, false) => {
             let m = super::write_txn_markers_response::WriteTxnMarkersResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (28, true) => {
             let m = super::txn_offset_commit_request::TxnOffsetCommitRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (28, false) => {
             let m = super::txn_offset_commit_response::TxnOffsetCommitResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (29, true) => {
             let m = super::describe_acls_request::DescribeAclsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (29, false) => {
             let m = super::describe_acls_response::DescribeAclsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (30, true) => {
             let m = super::create_acls_request::CreateAclsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (30, false) => {
             let m = super::create_acls_response::CreateAclsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (31, true) => {
             let m = super::delete_acls_request::DeleteAclsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (31, false) => {
             let m = super::delete_acls_response::DeleteAclsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (32, true) => {
             let m = super::describe_configs_request::DescribeConfigsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (32, false) => {
             let m = super::describe_configs_response::DescribeConfigsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (33, true) => {
             let m = super::alter_configs_request::AlterConfigsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (33, false) => {
             let m = super::alter_configs_response::AlterConfigsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (34, true) => {
             let m = super::alter_replica_log_dirs_request::AlterReplicaLogDirsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (34, false) => {
             let m = super::alter_replica_log_dirs_response::AlterReplicaLogDirsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (35, true) => {
             let m = super::describe_log_dirs_request::DescribeLogDirsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (35, false) => {
             let m = super::describe_log_dirs_response::DescribeLogDirsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (36, true) => {
             let m = super::sasl_authenticate_request::SaslAuthenticateRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (36, false) => {
             let m = super::sasl_authenticate_response::SaslAuthenticateResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (37, true) => {
             let m = super::create_partitions_request::CreatePartitionsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (37, false) => {
             let m = super::create_partitions_response::CreatePartitionsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (38, true) => {
             let m = super::create_delegation_token_request::CreateDelegationTokenRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (38, false) => {
             let m = super::create_delegation_token_response::CreateDelegationTokenResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (39, true) => {
             let m = super::renew_delegation_token_request::RenewDelegationTokenRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (39, false) => {
             let m = super::renew_delegation_token_response::RenewDelegationTokenResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (40, true) => {
             let m = super::expire_delegation_token_request::ExpireDelegationTokenRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (40, false) => {
             let m = super::expire_delegation_token_response::ExpireDelegationTokenResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (41, true) => {
             let m = super::describe_delegation_token_request::DescribeDelegationTokenRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (41, false) => {
             let m = super::describe_delegation_token_response::DescribeDelegationTokenResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (42, true) => {
             let m = super::delete_groups_request::DeleteGroupsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (42, false) => {
             let m = super::delete_groups_response::DeleteGroupsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (43, true) => {
             let m = super::elect_leaders_request::ElectLeadersRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (43, false) => {
             let m = super::elect_leaders_response::ElectLeadersResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (44, true) => {
             let m = super::incremental_alter_configs_request::IncrementalAlterConfigsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (44, false) => {
             let m = super::incremental_alter_configs_response::IncrementalAlterConfigsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (45, true) => {
             let m = super::alter_partition_reassignments_request::AlterPartitionReassignmentsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (45, false) => {
             let m = super::alter_partition_reassignments_response::AlterPartitionReassignmentsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (46, true) => {
             let m = super::list_partition_reassignments_request::ListPartitionReassignmentsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (46, false) => {
             let m = super::list_partition_reassignments_response::ListPartitionReassignmentsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (47, true) => {
             let m = super::offset_delete_request::OffsetDeleteRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (47, false) => {
             let m = super::offset_delete_response::OffsetDeleteResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (48, true) => {
             let m = super::describe_client_quotas_request::DescribeClientQuotasRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (48, false) => {
             let m = super::describe_client_quotas_response::DescribeClientQuotasResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (49, true) => {
             let m = super::alter_client_quotas_request::AlterClientQuotasRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (49, false) => {
             let m = super::alter_client_quotas_response::AlterClientQuotasResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (50, true) => {
             let m = super::describe_user_scram_credentials_request::DescribeUserScramCredentialsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (50, false) => {
             let m = super::describe_user_scram_credentials_response::DescribeUserScramCredentialsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (51, true) => {
             let m = super::alter_user_scram_credentials_request::AlterUserScramCredentialsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (51, false) => {
             let m = super::alter_user_scram_credentials_response::AlterUserScramCredentialsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (52, true) => {
             let m = super::vote_request::VoteRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (52, false) => {
             let m = super::vote_response::VoteResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (53, true) => {
             let m = super::begin_quorum_epoch_request::BeginQuorumEpochRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (53, false) => {
             let m = super::begin_quorum_epoch_response::BeginQuorumEpochResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (54, true) => {
             let m = super::end_quorum_epoch_request::EndQuorumEpochRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (54, false) => {
             let m = super::end_quorum_epoch_response::EndQuorumEpochResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (55, true) => {
             let m = super::describe_quorum_request::DescribeQuorumRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (55, false) => {
             let m = super::describe_quorum_response::DescribeQuorumResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (56, true) => {
             let m = super::alter_partition_request::AlterPartitionRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (56, false) => {
             let m = super::alter_partition_response::AlterPartitionResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (57, true) => {
             let m = super::update_features_request::UpdateFeaturesRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (57, false) => {
             let m = super::update_features_response::UpdateFeaturesResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (58, true) => {
             let m = super::envelope_request::EnvelopeRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (58, false) => {
             let m = super::envelope_response::EnvelopeResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (59, true) => {
             let m = super::fetch_snapshot_request::FetchSnapshotRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (59, false) => {
             let m = super::fetch_snapshot_response::FetchSnapshotResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (60, true) => {
             let m = super::describe_cluster_request::DescribeClusterRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (60, false) => {
             let m = super::describe_cluster_response::DescribeClusterResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (61, true) => {
             let m = super::describe_producers_request::DescribeProducersRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (61, false) => {
             let m = super::describe_producers_response::DescribeProducersResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (62, true) => {
             let m = super::broker_registration_request::BrokerRegistrationRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (62, false) => {
             let m = super::broker_registration_response::BrokerRegistrationResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (63, true) => {
             let m = super::broker_heartbeat_request::BrokerHeartbeatRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (63, false) => {
             let m = super::broker_heartbeat_response::BrokerHeartbeatResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (64, true) => {
             let m = super::unregister_broker_request::UnregisterBrokerRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (64, false) => {
             let m = super::unregister_broker_response::UnregisterBrokerResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (65, true) => {
             let m = super::describe_transactions_request::DescribeTransactionsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (65, false) => {
             let m = super::describe_transactions_response::DescribeTransactionsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (66, true) => {
             let m = super::list_transactions_request::ListTransactionsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (66, false) => {
             let m = super::list_transactions_response::ListTransactionsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (67, true) => {
             let m = super::allocate_producer_ids_request::AllocateProducerIdsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (67, false) => {
             let m = super::allocate_producer_ids_response::AllocateProducerIdsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (68, true) => {
             let m = super::consumer_group_heartbeat_request::ConsumerGroupHeartbeatRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (68, false) => {
             let m = super::consumer_group_heartbeat_response::ConsumerGroupHeartbeatResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (69, true) => {
             let m = super::consumer_group_describe_request::ConsumerGroupDescribeRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (69, false) => {
             let m = super::consumer_group_describe_response::ConsumerGroupDescribeResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (70, true) => {
             let m = super::controller_registration_request::ControllerRegistrationRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (70, false) => {
             let m = super::controller_registration_response::ControllerRegistrationResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (71, true) => {
             let m = super::get_telemetry_subscriptions_request::GetTelemetrySubscriptionsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (71, false) => {
             let m = super::get_telemetry_subscriptions_response::GetTelemetrySubscriptionsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (72, true) => {
             let m = super::push_telemetry_request::PushTelemetryRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (72, false) => {
             let m = super::push_telemetry_response::PushTelemetryResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (73, true) => {
             let m = super::assign_replicas_to_dirs_request::AssignReplicasToDirsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (73, false) => {
             let m = super::assign_replicas_to_dirs_response::AssignReplicasToDirsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (74, true) => {
             let m = super::list_config_resources_request::ListConfigResourcesRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (74, false) => {
             let m = super::list_config_resources_response::ListConfigResourcesResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (75, true) => {
             let m = super::describe_topic_partitions_request::DescribeTopicPartitionsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (75, false) => {
             let m = super::describe_topic_partitions_response::DescribeTopicPartitionsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (76, true) => {
             let m = super::share_group_heartbeat_request::ShareGroupHeartbeatRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (76, false) => {
             let m = super::share_group_heartbeat_response::ShareGroupHeartbeatResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (77, true) => {
             let m = super::share_group_describe_request::ShareGroupDescribeRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (77, false) => {
             let m = super::share_group_describe_response::ShareGroupDescribeResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (78, true) => {
             let m = super::share_fetch_request::ShareFetchRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (78, false) => {
             let m = super::share_fetch_response::ShareFetchResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (79, true) => {
             let m = super::share_acknowledge_request::ShareAcknowledgeRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (79, false) => {
             let m = super::share_acknowledge_response::ShareAcknowledgeResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (80, true) => {
             let m = super::add_raft_voter_request::AddRaftVoterRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (80, false) => {
             let m = super::add_raft_voter_response::AddRaftVoterResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (81, true) => {
             let m = super::remove_raft_voter_request::RemoveRaftVoterRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (81, false) => {
             let m = super::remove_raft_voter_response::RemoveRaftVoterResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (82, true) => {
             let m = super::update_raft_voter_request::UpdateRaftVoterRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (82, false) => {
             let m = super::update_raft_voter_response::UpdateRaftVoterResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (83, true) => {
             let m = super::initialize_share_group_state_request::InitializeShareGroupStateRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (83, false) => {
             let m = super::initialize_share_group_state_response::InitializeShareGroupStateResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (84, true) => {
             let m = super::read_share_group_state_request::ReadShareGroupStateRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (84, false) => {
             let m = super::read_share_group_state_response::ReadShareGroupStateResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (85, true) => {
             let m = super::write_share_group_state_request::WriteShareGroupStateRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (85, false) => {
             let m = super::write_share_group_state_response::WriteShareGroupStateResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (86, true) => {
             let m = super::delete_share_group_state_request::DeleteShareGroupStateRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (86, false) => {
             let m = super::delete_share_group_state_response::DeleteShareGroupStateResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (87, true) => {
             let m = super::read_share_group_state_summary_request::ReadShareGroupStateSummaryRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (87, false) => {
             let m = super::read_share_group_state_summary_response::ReadShareGroupStateSummaryResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (88, true) => {
             let m = super::streams_group_heartbeat_request::StreamsGroupHeartbeatRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (88, false) => {
             let m = super::streams_group_heartbeat_response::StreamsGroupHeartbeatResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (89, true) => {
             let m = super::streams_group_describe_request::StreamsGroupDescribeRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (89, false) => {
             let m = super::streams_group_describe_response::StreamsGroupDescribeResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (90, true) => {
             let m = super::describe_share_group_offsets_request::DescribeShareGroupOffsetsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (90, false) => {
             let m = super::describe_share_group_offsets_response::DescribeShareGroupOffsetsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (91, true) => {
             let m = super::alter_share_group_offsets_request::AlterShareGroupOffsetsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (91, false) => {
             let m = super::alter_share_group_offsets_response::AlterShareGroupOffsetsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (92, true) => {
             let m = super::delete_share_group_offsets_request::DeleteShareGroupOffsetsRequest::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         (92, false) => {
             let m = super::delete_share_group_offsets_response::DeleteShareGroupOffsetsResponse::decode(version, &mut buf)?;
-            let mut e = BytesMut::with_capacity(m.encoded_size(version));
-            m.encode(version, &mut e);
+            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect("just decoded at this version"));
+            m.encode(version, &mut e).expect("just decoded at this version");
             e
         }
         _ => return Err(DecodeError::UnknownApiKey(api_key)),

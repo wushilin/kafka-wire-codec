@@ -8,7 +8,8 @@ use kafka_wire_codec::generated::produce_request::{
     PartitionProduceData, ProduceRequest, TopicProduceData,
 };
 use kafka_wire_codec::{
-    frame, BrokerId, DecodeError, Encodable, RequestKind, ResponseKind, StrBytes, TopicName, Uuid,
+    frame, BrokerId, DecodeError, Encodable, EncodableZeroCopy, EncodeError, RequestKind,
+    ResponseKind, StrBytes, TopicName, Uuid,
 };
 
 fn sample_produce() -> ProduceRequest {
@@ -32,7 +33,7 @@ fn sample_produce() -> ProduceRequest {
 fn request_kind_roundtrip_without_hand_written_match() {
     let version: i16 = 9;
     let req = sample_produce();
-    let wire = req.to_bytes(version).freeze();
+    let wire = req.to_bytes(version).unwrap().freeze();
 
     // One decode call, no `match api_key` at the call site.
     let mut buf = wire.clone();
@@ -48,12 +49,12 @@ fn request_kind_roundtrip_without_hand_written_match() {
     assert_eq!(decoded.topic_data[0].name, "my-topic");
 
     // Generic re-encode straight off the enum, byte-identical.
-    assert_eq!(kind.encoded_size(version), wire.len());
-    assert_eq!(kind.to_bytes(version).freeze(), wire);
+    assert_eq!(kind.encoded_size(version).unwrap(), wire.len());
+    assert_eq!(kind.to_bytes(version).unwrap().freeze(), wire);
 
     // From<message> for ergonomic construction.
     let kind2: RequestKind = sample_produce().into();
-    assert_eq!(kind2.to_bytes(version).freeze(), wire);
+    assert_eq!(kind2.to_bytes(version).unwrap().freeze(), wire);
 
     assert!(matches!(
         RequestKind::decode(9999, 0, &mut wire.clone()),
@@ -72,7 +73,7 @@ fn response_kind_roundtrip() {
         }],
         ..Default::default()
     };
-    let wire = resp.to_bytes(version).freeze();
+    let wire = resp.to_bytes(version).unwrap().freeze();
 
     let kind = ResponseKind::decode(MetadataResponse::API_KEY, version, &mut wire.clone()).unwrap();
     assert_eq!(kind.name(), "Metadata");
@@ -84,13 +85,13 @@ fn response_kind_roundtrip() {
         decoded.topics[0].topic_id,
         Uuid::from_u128(0x1234_5678_9abc_def0_1234_5678_9abc_def0)
     );
-    assert_eq!(kind.to_bytes(version).freeze(), wire);
+    assert_eq!(kind.to_bytes(version).unwrap().freeze(), wire);
 }
 
 #[test]
 fn strings_are_utf8_validated_and_zero_copy() {
     let version: i16 = 9;
-    let wire = sample_produce().to_bytes(version).freeze();
+    let wire = sample_produce().to_bytes(version).unwrap().freeze();
     let decoded = ProduceRequest::decode(version, &mut wire.clone()).unwrap();
 
     // StrBytes gives &str access with no further checks or copies.
@@ -106,7 +107,7 @@ fn strings_are_utf8_validated_and_zero_copy() {
     let mut req = sample_produce();
     req.topic_data[0].name =
         TopicName(unsafe { StrBytes::from_utf8_unchecked(Bytes::from_static(b"\xff\xfe")) });
-    let bad = req.to_bytes(version).freeze();
+    let bad = req.to_bytes(version).unwrap().freeze();
     assert!(matches!(
         ProduceRequest::decode(version, &mut bad.clone()),
         Err(DecodeError::InvalidUtf8)
@@ -197,8 +198,8 @@ fn multibyte_utf8_strings_roundtrip_at_legacy_and_compact_versions() {
     };
     // v1 = legacy (int16-length strings), v5 = flexible (compact varint strings).
     for version in [1i16, 5] {
-        let wire = req.to_bytes(version).freeze();
-        assert_eq!(wire.len(), req.encoded_size(version), "v{version} size-first mismatch");
+        let wire = req.to_bytes(version).unwrap().freeze();
+        assert_eq!(wire.len(), req.encoded_size(version).unwrap(), "v{version} size-first mismatch");
         let mut buf = wire.clone();
         let decoded = DeleteTopicsRequest::decode(version, &mut buf).unwrap();
         assert!(buf.is_empty());
@@ -217,7 +218,7 @@ fn invalid_utf8_is_rejected_on_both_string_encodings() {
     };
     // Legacy (v1) and compact (v5) string decoders both validate.
     for version in [1i16, 5] {
-        let wire = req.to_bytes(version).freeze();
+        let wire = req.to_bytes(version).unwrap().freeze();
         assert!(
             matches!(
                 DeleteTopicsRequest::decode(version, &mut wire.clone()),
@@ -246,8 +247,8 @@ fn nullable_transactional_id_and_producer_id_default() {
             transaction_timeout_ms: 60_000,
             ..Default::default()
         };
-        let wire = req.to_bytes(version).freeze();
-        assert_eq!(wire.len(), req.encoded_size(version));
+        let wire = req.to_bytes(version).unwrap().freeze();
+        assert_eq!(wire.len(), req.encoded_size(version).unwrap());
         let decoded = InitProducerIdRequest::decode(version, &mut wire.clone()).unwrap();
         assert_eq!(decoded.transactional_id, txn_id);
     }
@@ -271,8 +272,8 @@ fn broker_id_arrays_roundtrip() {
         }],
         ..Default::default()
     };
-    let wire = resp.to_bytes(version).freeze();
-    assert_eq!(wire.len(), resp.encoded_size(version));
+    let wire = resp.to_bytes(version).unwrap().freeze();
+    assert_eq!(wire.len(), resp.encoded_size(version).unwrap());
     let decoded = MetadataResponse::decode(version, &mut wire.clone()).unwrap();
     let p = &decoded.topics[0].partitions[0];
     assert_eq!(p.leader_id, BrokerId(1));
@@ -293,7 +294,7 @@ fn uuid_wire_format_is_rfc_big_endian() {
         }],
         ..Default::default()
     };
-    let wire = resp.to_bytes(version).freeze();
+    let wire = resp.to_bytes(version).unwrap().freeze();
     // The 16 uuid bytes must appear on the wire exactly as the RFC big-endian
     // byte sequence — the same layout Java's Uuid(mostSigBits, leastSigBits) writes.
     let expected: [u8; 16] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
@@ -325,24 +326,24 @@ fn tagged_node_endpoints_are_typed_fields() {
     // v16+: encoded as tagged field 0, size-first exact, and decodes back into
     // the TYPED field — nothing lands in the raw bucket.
     let version = 16i16;
-    let wire = resp.to_bytes(version).freeze();
-    assert_eq!(wire.len(), resp.encoded_size(version));
+    let wire = resp.to_bytes(version).unwrap().freeze();
+    assert_eq!(wire.len(), resp.encoded_size(version).unwrap());
     let decoded = FetchResponse::decode(version, &mut wire.clone()).unwrap();
     assert_eq!(decoded.node_endpoints, resp.node_endpoints);
     assert_eq!(decoded.node_endpoints[0].node_id, BrokerId(5));
     assert!(decoded.tagged_fields.is_empty());
 
     // Below the taggedVersions floor the field is not encoded at all.
-    let wire15 = resp.to_bytes(15).freeze();
+    let wire15 = resp.to_bytes(15).unwrap().freeze();
     let decoded15 = FetchResponse::decode(15, &mut wire15.clone()).unwrap();
     assert!(decoded15.node_endpoints.is_empty());
 
     // Default value ⇒ tag omitted: a default message encodes zero tagged
     // fields and round-trips to default.
-    let empty = FetchResponse::default().to_bytes(version).freeze();
+    let empty = FetchResponse::default().to_bytes(version).unwrap().freeze();
     let d = FetchResponse::decode(version, &mut empty.clone()).unwrap();
     assert!(d.node_endpoints.is_empty() && d.tagged_fields.is_empty());
-    assert_eq!(FetchResponse::default().to_bytes(version), empty);
+    assert_eq!(FetchResponse::default().to_bytes(version).unwrap(), empty);
 }
 
 #[test]
@@ -358,11 +359,11 @@ fn tagged_produce_response_node_endpoints_roundtrip() {
         }],
         ..Default::default()
     };
-    let wire = resp.to_bytes(version).freeze();
-    assert_eq!(wire.len(), resp.encoded_size(version));
+    let wire = resp.to_bytes(version).unwrap().freeze();
+    assert_eq!(wire.len(), resp.encoded_size(version).unwrap());
     let decoded = ProduceResponse::decode(version, &mut wire.clone()).unwrap();
     assert_eq!(decoded.node_endpoints, resp.node_endpoints);
-    assert_eq!(decoded.to_bytes(version).freeze(), wire);
+    assert_eq!(decoded.to_bytes(version).unwrap().freeze(), wire);
 }
 
 #[test]
@@ -386,8 +387,8 @@ fn unknown_tags_are_preserved_and_interleaved_in_ascending_order() {
         ..Default::default()
     };
 
-    let wire = req.to_bytes(version).freeze();
-    assert_eq!(wire.len(), req.encoded_size(version));
+    let wire = req.to_bytes(version).unwrap().freeze();
+    assert_eq!(wire.len(), req.encoded_size(version).unwrap());
 
     // Decode routes tag 0 into the TYPED cluster_id (it is schema-known),
     // keeps unknown tag 200 raw, and fills replica_state from typed tag 1.
@@ -399,7 +400,7 @@ fn unknown_tags_are_preserved_and_interleaved_in_ascending_order() {
     // Byte-exact round-trip: the raw-tag-0 encode and the typed-cluster_id
     // encode must produce identical wire order (0, 1, 200). A wrong interleave
     // would decode field-equal but produce different bytes.
-    assert_eq!(decoded.to_bytes(version).freeze(), wire);
+    assert_eq!(decoded.to_bytes(version).unwrap().freeze(), wire);
 
     // A tagged uuid at partition level (FetchPartition.ReplicaDirectoryId,
     // tag 0 from v17) decodes into the typed field, not the raw bucket.
@@ -415,14 +416,14 @@ fn unknown_tags_are_preserved_and_interleaved_in_ascending_order() {
         }],
         ..Default::default()
     };
-    let wire17 = req17.to_bytes(17).freeze();
-    assert_eq!(wire17.len(), req17.encoded_size(17));
+    let wire17 = req17.to_bytes(17).unwrap().freeze();
+    assert_eq!(wire17.len(), req17.encoded_size(17).unwrap());
     let decoded17 = FetchRequest::decode(17, &mut wire17.clone()).unwrap();
     let p = &decoded17.topics[0].partitions[0];
     assert_eq!(p.replica_directory_id, Uuid::from_u128(7));
     assert!(p.tagged_fields.is_empty());
     // ...and below v17 the same field is silently omitted (default rule).
-    let wire16 = req17.to_bytes(16).freeze();
+    let wire16 = req17.to_bytes(16).unwrap().freeze();
     let decoded16 = FetchRequest::decode(16, &mut wire16.clone()).unwrap();
     assert_eq!(
         decoded16.topics[0].partitions[0].replica_directory_id,
@@ -456,14 +457,14 @@ fn tagged_partition_level_structs_roundtrip() {
         }],
         ..Default::default()
     };
-    let wire = resp.to_bytes(version).freeze();
-    assert_eq!(wire.len(), resp.encoded_size(version));
+    let wire = resp.to_bytes(version).unwrap().freeze();
+    assert_eq!(wire.len(), resp.encoded_size(version).unwrap());
     let decoded = FetchResponse::decode(version, &mut wire.clone()).unwrap();
     let p = &decoded.responses[0].partitions[0];
     assert_eq!(p.diverging_epoch.epoch, 5);
     assert_eq!(p.diverging_epoch.end_offset, 42);
     assert_eq!(p.current_leader.leader_id, BrokerId(2));
-    assert_eq!(decoded.to_bytes(version).freeze(), wire);
+    assert_eq!(decoded.to_bytes(version).unwrap().freeze(), wire);
 }
 
 #[test]
@@ -480,10 +481,10 @@ fn kind_frame_helpers_match_message_framing() {
         client_id: Some("proxy".into()),
         tagged_fields: vec![],
     };
-    let plain = frame_request(&header, 2, &req, version);
+    let plain = frame_request(&header, 2, &req, version).unwrap();
     let kind: RequestKind = req.into();
-    let via_kind = frame_request_kind(&header, 2, &kind, version);
-    let via_kind_zc = frame_request_kind_zero_copy(&header, 2, &kind, version);
+    let via_kind = frame_request_kind(&header, 2, &kind, version).unwrap();
+    let via_kind_zc = frame_request_kind_zero_copy(&header, 2, &kind, version).unwrap();
     assert_eq!(plain.to_contiguous(), via_kind.to_contiguous());
     assert_eq!(plain.to_contiguous(), via_kind_zc.to_contiguous());
 }
@@ -494,11 +495,40 @@ fn supports_version_gates_encoding() {
     assert!(ProduceRequest::supports_version(ProduceRequest::VALID_MAX_VERSION));
     assert!(!ProduceRequest::supports_version(99));
     assert!(!ProduceRequest::supports_version(-1));
-    // Decode of an unsupported version is an Err, not a panic.
+    // Symmetric version-range contract: decode AND encode of an unsupported
+    // version are Errs, not panics.
     assert!(matches!(
         ProduceRequest::decode(99, &mut Bytes::new()),
         Err(DecodeError::UnsupportedVersion { api_key: 0, version: 99 })
     ));
+    let req = sample_produce();
+    assert!(matches!(
+        req.encoded_size(99),
+        Err(EncodeError::UnsupportedVersion { api_key: 0, version: 99 })
+    ));
+    assert!(matches!(
+        req.to_bytes(99),
+        Err(EncodeError::UnsupportedVersion { api_key: 0, version: 99 })
+    ));
+    assert!(matches!(
+        req.to_segments(-1),
+        Err(EncodeError::UnsupportedVersion { api_key: 0, version: -1 })
+    ));
+    // ...and through the Kind enums and frame helpers too.
+    let kind: RequestKind = req.into();
+    assert!(kind.to_bytes(99).is_err());
+    assert!(kind.to_segments(99).is_err());
+    let header = kafka_wire_codec::header::RequestHeader {
+        api_key: 0,
+        api_version: 99,
+        correlation_id: 1,
+        client_id: None,
+        tagged_fields: vec![],
+    };
+    assert!(frame::frame_request_kind(&header, 2, &kind, 99).is_err());
+    // Tombstone APIs (validVersions "none") error instead of panicking now.
+    use kafka_wire_codec::generated::controlled_shutdown_request::ControlledShutdownRequest;
+    assert!(ControlledShutdownRequest::default().encoded_size(0).is_err());
 }
 
 #[test]

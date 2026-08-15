@@ -79,7 +79,7 @@ let header = RequestHeader {
 let header_version = dispatch::request_header_version(ApiVersionsRequest::API_KEY, 3).unwrap();
 
 // Size-first framing: one allocation, then write [len][header][body] to a stream.
-let frame = frame_request(&header, header_version, &req, /*api_version=*/ 3);
+let frame = frame_request(&header, header_version, &req, /*api_version=*/ 3)?;
 frame.write_to(&mut std::io::stdout())?;          // sync
 // frame.write_to_async(&mut socket).await?;       // async (tokio)
 
@@ -142,12 +142,13 @@ let topic_id: Uuid = metadata.topics[0].topic_id;       // real Uuid, not [u8; 1
 
 - One struct per message; version-gating is applied at **runtime** via an `i16`
   version argument. Fields absent in a version simply keep their `Default`.
-- **Version-range contract:** decoding an unsupported version returns
-  `Err(DecodeError::UnsupportedVersion)` (network input is a runtime condition);
-  encoding at an unsupported version **panics** (caller-chosen versions are a
-  programmer error, and there is no partial frame to salvage). Gate dynamic
-  versions with `Encodable::supports_version()` or the
-  `VALID_MIN/MAX_VERSION` constants before encoding.
+- **Version-range contract (symmetric):** decoding an unsupported version
+  returns `Err(DecodeError::UnsupportedVersion)`, and encoding at one returns
+  `Err(EncodeError::UnsupportedVersion)` — no panics on either side. Callers
+  that pre-negotiate versions (`Encodable::supports_version()` or the
+  `VALID_MIN/MAX_VERSION` constants) can treat the encode error as
+  unreachable. The one remaining panic is a caller-constructed invariant
+  violation: a `None` in a field that is not nullable at the requested version.
 - The caller supplies the API version. Discover what a broker supports by sending
   an `ApiVersionsRequest` (api_key 18) on connect — exactly like every production
   Kafka client.

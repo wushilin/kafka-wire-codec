@@ -8,7 +8,7 @@ pub mod types;
 
 pub use bytes::{Bytes, BytesMut};
 pub use codec::{SegmentedBuf, WireBuf, DEFAULT_ZERO_COPY_THRESHOLD};
-pub use error::DecodeError;
+pub use error::{DecodeError, EncodeError};
 pub use generated::api_constants::ApiKey;
 pub use generated::kinds::{RequestKind, ResponseKind};
 pub use message::{Encodable, EncodableZeroCopy};

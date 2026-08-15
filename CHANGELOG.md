@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.4.0 — 2026-08-15
+
+Kafka schema tag: **4.3.1** (unchanged). Compat: 1002/1002 records
+byte-for-byte against `kafka-clients:4.3.1`.
+
+Breaking — symmetric Result-based encoding (matches kafka-protocol's shape):
+
+- Top-level `encoded_size`/`encode` now return `Result<_, EncodeError>` instead
+  of panicking on an out-of-range version; the new
+  `EncodeError::UnsupportedVersion` mirrors the decode-side error. All 356
+  generated version asserts are gone. Tombstone (version-less) APIs return
+  `Err` instead of panicking too.
+- `Encodable::{wire_size, write, to_bytes}` and
+  `EncodableZeroCopy::{write_segmented, to_segments}` return `Result`;
+  the eight `frame_*` builders return `Result<EncodedFrame, EncodeError>`.
+- `RequestKind`/`ResponseKind`: `encoded_size`/`encode`/`to_bytes` return
+  `Result`, and the new `to_segments()` gives the Kinds the full zero-copy
+  surface (the enum-level analogue of `EncodableZeroCopy::to_segments`; a
+  literal trait impl is impossible because `Encodable` carries per-message
+  consts an enum spanning every API cannot provide).
+- Nested (non-top-level) struct encoding stays infallible — it is only
+  reachable through a top-level message that already validated the version.
+- The one remaining panic is a caller-constructed invariant violation
+  (`None` in a non-nullable-at-this-version field), documented on `Encodable`.
+
 ## 0.3.0 — 2026-08-15
 
 Kafka schema tag: **4.3.1** (unchanged). Compat: 1002/1002 records

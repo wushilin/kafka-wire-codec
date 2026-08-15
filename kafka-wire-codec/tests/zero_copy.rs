@@ -41,7 +41,7 @@ fn decode_is_zero_copy() {
     let version: i16 = 9;
     let records = Bytes::from(vec![0x62u8; 4096]);
     let req = sample_produce(records);
-    let wire = req.to_bytes(version).freeze();
+    let wire = req.to_bytes(version).unwrap().freeze();
 
     let mut buf = wire.clone();
     let decoded = ProduceRequest::decode(version, &mut buf).unwrap();
@@ -66,7 +66,7 @@ fn encode_is_zero_copy_for_large_payloads() {
     let records = Bytes::from(vec![0x62u8; 1 << 20]); // 1 MiB, above threshold
     let req = sample_produce(records.clone());
 
-    let segments = req.to_segments(version).into_segments();
+    let segments = req.to_segments(version).unwrap().into_segments();
 
     // Exactly one segment must BE the records payload (same allocation).
     let shared: Vec<_> = segments
@@ -80,13 +80,13 @@ fn encode_is_zero_copy_for_large_payloads() {
     );
 
     // And the concatenation is byte-identical to the contiguous encode.
-    let contiguous = req.to_bytes(version);
+    let contiguous = req.to_bytes(version).unwrap();
     let mut joined = Vec::with_capacity(contiguous.len());
     for s in &segments {
         joined.extend_from_slice(s);
     }
     assert_eq!(joined, contiguous.to_vec());
-    assert_eq!(req.wire_size(version), joined.len());
+    assert_eq!(req.wire_size(version).unwrap(), joined.len());
 }
 
 #[test]
@@ -95,7 +95,7 @@ fn small_payloads_are_coalesced_not_fragmented() {
     // Below the threshold: should be copied into the scratch, yielding ONE segment.
     let records = Bytes::from(vec![0x62u8; DEFAULT_ZERO_COPY_THRESHOLD - 1]);
     let req = sample_produce(records);
-    let segments = req.to_segments(version).into_segments();
+    let segments = req.to_segments(version).unwrap().into_segments();
     assert_eq!(
         segments.len(),
         1,
@@ -129,8 +129,8 @@ fn zero_copy_frame_matches_contiguous_frame() {
     let records = Bytes::from(vec![0x41u8; 128 * 1024]);
     let req = sample_produce(records.clone());
 
-    let plain = frame_request(&header, header_version, &req, version);
-    let zc = frame_request_zero_copy(&header, header_version, &req, version);
+    let plain = frame_request(&header, header_version, &req, version).unwrap();
+    let zc = frame_request_zero_copy(&header, header_version, &req, version).unwrap();
 
     assert_eq!(plain.len(), zc.len());
     assert_eq!(plain.to_contiguous(), zc.to_contiguous());
@@ -224,7 +224,7 @@ fn schema_defaults_are_applied() {
 fn nullable_struct_uses_kafka_presence_byte() {
     use kafka_wire_codec::generated::describe_topic_partitions_request::DescribeTopicPartitionsRequest;
     let req = DescribeTopicPartitionsRequest::default(); // cursor: None
-    let wire = req.to_bytes(0).freeze();
+    let wire = req.to_bytes(0).unwrap().freeze();
     // Kafka encodes a null nullable struct as -1 (and reads any byte >= 0 as
     // present). The cursor is the last field before tagged fields.
     let mut b = wire.clone();

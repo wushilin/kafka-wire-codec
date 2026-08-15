@@ -79,7 +79,7 @@ pub fn generate_message(spec: &MessageSpec) -> String {
     out.push_str("use bytes::Bytes;\n");
     out.push_str("use uuid::Uuid;\n");
     out.push_str("use crate::codec::*;\n");
-    out.push_str("use crate::error::DecodeError;\n");
+    out.push_str("use crate::error::{DecodeError, EncodeError};\n");
     out.push_str("use crate::types::*;\n\n");
 
     // Emit common/inline structs first
@@ -142,9 +142,9 @@ pub fn generate_message(spec: &MessageSpec) -> String {
             flex_min.to_string()
         }
     ));
-    out.push_str("    fn wire_size(&self, version: i16) -> usize { self.encoded_size(version) }\n");
+    out.push_str("    fn wire_size(&self, version: i16) -> Result<usize, EncodeError> { self.encoded_size(version) }\n");
     out.push_str(
-        "    fn write(&self, version: i16, buf: &mut bytes::BytesMut) { self.encode(version, buf) }\n",
+        "    fn write(&self, version: i16, buf: &mut bytes::BytesMut) -> Result<(), EncodeError> { self.encode(version, buf) }\n",
     );
     out.push_str("    fn read(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> { Self::decode(version, buf) }\n");
     out.push_str("}\n");
@@ -155,7 +155,7 @@ pub fn generate_message(spec: &MessageSpec) -> String {
         spec.name
     ));
     out.push_str(
-        "    fn write_segmented(&self, version: i16, buf: &mut SegmentedBuf) { self.encode(version, buf) }\n",
+        "    fn write_segmented(&self, version: i16, buf: &mut SegmentedBuf) -> Result<(), EncodeError> { self.encode(version, buf) }\n",
     );
     out.push_str("}\n");
 
@@ -249,11 +249,11 @@ fn emit_struct(
         if t.valid_min > t.valid_max {
             // Tombstone API (validVersions: "none", e.g. ControlledShutdown in
             // 4.x): no version can be encoded or decoded. Emit explicit stubs.
-            out.push_str("    pub fn encoded_size(&self, version: i16) -> usize {\n");
-            out.push_str("        panic!(\"api key {} supports no protocol versions (requested {})\", Self::API_KEY, version);\n");
+            out.push_str("    pub fn encoded_size(&self, version: i16) -> Result<usize, EncodeError> {\n");
+            out.push_str("        Err(EncodeError::UnsupportedVersion { api_key: Self::API_KEY, version })\n");
             out.push_str("    }\n\n");
-            out.push_str("    pub fn encode<B: WireBuf>(&self, version: i16, _buf: &mut B) {\n");
-            out.push_str("        panic!(\"api key {} supports no protocol versions (requested {})\", Self::API_KEY, version);\n");
+            out.push_str("    pub fn encode<B: WireBuf>(&self, version: i16, _buf: &mut B) -> Result<(), EncodeError> {\n");
+            out.push_str("        Err(EncodeError::UnsupportedVersion { api_key: Self::API_KEY, version })\n");
             out.push_str("    }\n\n");
             out.push_str("    pub fn decode(version: i16, _buf: &mut Bytes) -> Result<Self, DecodeError> {\n");
             out.push_str("        Err(DecodeError::UnsupportedVersion { api_key: Self::API_KEY, version })\n");
@@ -261,13 +261,18 @@ fn emit_struct(
             out.push_str("}\n");
             return out;
         }
-        "        assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),\n            \"unsupported version {} for api key {}\", version, Self::API_KEY);\n"
+        "        if !(Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version) {\n            return Err(EncodeError::UnsupportedVersion { api_key: Self::API_KEY, version });\n        }\n"
     } else {
         ""
     };
 
-    // encoded_size
-    out.push_str("    pub fn encoded_size(&self, version: i16) -> usize {\n");
+    // encoded_size. The top-level message validates the version and returns
+    // Result; nested structs are only reachable through it and stay infallible.
+    if top.is_some() {
+        out.push_str("    pub fn encoded_size(&self, version: i16) -> Result<usize, EncodeError> {\n");
+    } else {
+        out.push_str("    pub fn encoded_size(&self, version: i16) -> usize {\n");
+    }
     out.push_str(version_check_size_encode);
     out.push_str("        let mut size = 0usize;\n");
     for field in fields {
@@ -302,12 +307,22 @@ fn emit_struct(
             out.push_str(&format!("        {}\n", flex_stmt(flex_min, &blk)));
         }
     }
-    out.push_str("        size\n");
+    if top.is_some() {
+        out.push_str("        Ok(size)\n");
+    } else {
+        out.push_str("        size\n");
+    }
     out.push_str("    }\n\n");
 
     // encode — generic over the sink so the same code drives both the
     // contiguous (BytesMut) and zero-copy (SegmentedBuf) paths.
-    out.push_str("    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {\n");
+    if top.is_some() {
+        out.push_str(
+            "    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) -> Result<(), EncodeError> {\n",
+        );
+    } else {
+        out.push_str("    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {\n");
+    }
     out.push_str(version_check_size_encode);
     for field in fields {
         out.push_str(&generate_field_encode(field, flex_min));
@@ -367,6 +382,9 @@ fn emit_struct(
             blk.push_str("        }");
             out.push_str(&format!("        {}\n", flex_stmt(flex_min, &blk)));
         }
+    }
+    if top.is_some() {
+        out.push_str("        Ok(())\n");
     }
     out.push_str("    }\n\n");
 

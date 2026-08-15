@@ -20,9 +20,9 @@ fn sample() -> ApiVersionsRequest {
 fn encodable_to_bytes_is_size_exact() {
     let req = sample();
     let version = 3;
-    let buf = req.to_bytes(version);
+    let buf = req.to_bytes(version).unwrap();
     // Size-first: the buffer length equals the pre-computed wire size exactly.
-    assert_eq!(buf.len(), req.wire_size(version));
+    assert_eq!(buf.len(), req.wire_size(version).unwrap());
 
     // And it round-trips.
     let mut b = buf.freeze();
@@ -65,7 +65,7 @@ fn frame_request_then_header_first_decode() {
     let req = sample();
 
     // Size-first whole-frame build, then write [len][header][body] to a Vec.
-    let frame = frame_request(&header, header_version, &req, version);
+    let frame = frame_request(&header, header_version, &req, version).unwrap();
     let mut wire: Vec<u8> = Vec::new();
     frame.write_to(&mut wire).unwrap();
 

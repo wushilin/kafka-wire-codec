@@ -399,8 +399,10 @@ fn generate_dispatch(entries: &[(i16, bool, String, String, i16, i16, i16)]) -> 
     let mut sorted = entries.to_vec();
     sorted.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
     for (api_key, is_request, module, name, _, _, _) in &sorted {
+        // The version was just decoded successfully, so re-encoding at it
+        // cannot hit EncodeError::UnsupportedVersion.
         out.push_str(&format!(
-            "        ({}, {}) => {{\n            let m = super::{}::{}::decode(version, &mut buf)?;\n            let mut e = BytesMut::with_capacity(m.encoded_size(version));\n            m.encode(version, &mut e);\n            e\n        }}\n",
+            "        ({}, {}) => {{\n            let m = super::{}::{}::decode(version, &mut buf)?;\n            let mut e = BytesMut::with_capacity(m.encoded_size(version).expect(\"just decoded at this version\"));\n            m.encode(version, &mut e).expect(\"just decoded at this version\");\n            e\n        }}\n",
             api_key, is_request, module, name
         ));
     }
@@ -423,8 +425,8 @@ fn generate_kinds(entries: &[(i16, bool, String, String, i16, i16, i16)]) -> Str
     let mut out = String::new();
     out.push_str("// Generated typed dispatch enums — do not edit.\n");
     out.push_str("use bytes::{Bytes, BytesMut};\n");
-    out.push_str("use crate::codec::WireBuf;\n");
-    out.push_str("use crate::error::DecodeError;\n\n");
+    out.push_str("use crate::codec::{SegmentedBuf, WireBuf};\n");
+    out.push_str("use crate::error::{DecodeError, EncodeError};\n\n");
 
     let mut sorted = entries.to_vec();
     sorted.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
@@ -503,7 +505,7 @@ fn generate_kinds(entries: &[(i16, bool, String, String, i16, i16, i16)]) -> Str
         out.push_str("        }\n    }\n\n");
 
         out.push_str("    /// Exact encoded size at `version` (size-first encoding).\n");
-        out.push_str("    pub fn encoded_size(&self, version: i16) -> usize {\n");
+        out.push_str("    pub fn encoded_size(&self, version: i16) -> Result<usize, EncodeError> {\n");
         out.push_str("        match self {\n");
         for (_, _, _, name, _, _, _) in &rows {
             out.push_str(&format!(
@@ -514,7 +516,9 @@ fn generate_kinds(entries: &[(i16, bool, String, String, i16, i16, i16)]) -> Str
         out.push_str("        }\n    }\n\n");
 
         out.push_str("    /// Encode the contained message at `version`.\n");
-        out.push_str("    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {\n");
+        out.push_str(
+            "    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) -> Result<(), EncodeError> {\n",
+        );
         out.push_str("        match self {\n");
         for (_, _, _, name, _, _, _) in &rows {
             out.push_str(&format!(
@@ -525,12 +529,20 @@ fn generate_kinds(entries: &[(i16, bool, String, String, i16, i16, i16)]) -> Str
         out.push_str("        }\n    }\n\n");
 
         out.push_str("    /// Size-first encode into a freshly allocated, exact-capacity buffer.\n");
-        out.push_str("    pub fn to_bytes(&self, version: i16) -> BytesMut {\n");
+        out.push_str("    pub fn to_bytes(&self, version: i16) -> Result<BytesMut, EncodeError> {\n");
         out.push_str(
-            "        let mut buf = BytesMut::with_capacity(self.encoded_size(version));\n",
+            "        let mut buf = BytesMut::with_capacity(self.encoded_size(version)?);\n",
         );
-        out.push_str("        self.encode(version, &mut buf);\n");
-        out.push_str("        buf\n    }\n");
+        out.push_str("        self.encode(version, &mut buf)?;\n");
+        out.push_str("        Ok(buf)\n    }\n\n");
+
+        out.push_str("    /// Zero-copy, single-pass encode (the enum-level analogue of\n");
+        out.push_str("    /// `EncodableZeroCopy::to_segments`): large `Bytes` payloads become\n");
+        out.push_str("    /// refcounted segments instead of being copied.\n");
+        out.push_str("    pub fn to_segments(&self, version: i16) -> Result<SegmentedBuf, EncodeError> {\n");
+        out.push_str("        let mut buf = SegmentedBuf::new();\n");
+        out.push_str("        self.encode(version, &mut buf)?;\n");
+        out.push_str("        Ok(buf)\n    }\n");
         out.push_str("}\n\n");
 
         for (_, _, module, name, _, _, _) in &rows {

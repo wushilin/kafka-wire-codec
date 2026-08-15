@@ -3,7 +3,7 @@
 use bytes::Bytes;
 use uuid::Uuid;
 use crate::codec::*;
-use crate::error::DecodeError;
+use crate::error::{DecodeError, EncodeError};
 use crate::types::*;
 
 /// Retired API (validVersions: "none"): kept for the api-key namespace; no version can be encoded or decoded.
@@ -22,12 +22,12 @@ impl UpdateMetadataRequest {
     /// First flexible (tagged-fields) version; `i16::MAX` if never flexible.
     pub const FLEXIBLE_MIN_VERSION: i16 = i16::MAX;
 
-    pub fn encoded_size(&self, version: i16) -> usize {
-        panic!("api key {} supports no protocol versions (requested {})", Self::API_KEY, version);
+    pub fn encoded_size(&self, version: i16) -> Result<usize, EncodeError> {
+        Err(EncodeError::UnsupportedVersion { api_key: Self::API_KEY, version })
     }
 
-    pub fn encode<B: WireBuf>(&self, version: i16, _buf: &mut B) {
-        panic!("api key {} supports no protocol versions (requested {})", Self::API_KEY, version);
+    pub fn encode<B: WireBuf>(&self, version: i16, _buf: &mut B) -> Result<(), EncodeError> {
+        Err(EncodeError::UnsupportedVersion { api_key: Self::API_KEY, version })
     }
 
     pub fn decode(version: i16, _buf: &mut Bytes) -> Result<Self, DecodeError> {
@@ -40,11 +40,11 @@ impl crate::Encodable for UpdateMetadataRequest {
     const VALID_MIN_VERSION: i16 = 32767;
     const VALID_MAX_VERSION: i16 = -32768;
     const FLEXIBLE_MIN_VERSION: i16 = i16::MAX;
-    fn wire_size(&self, version: i16) -> usize { self.encoded_size(version) }
-    fn write(&self, version: i16, buf: &mut bytes::BytesMut) { self.encode(version, buf) }
+    fn wire_size(&self, version: i16) -> Result<usize, EncodeError> { self.encoded_size(version) }
+    fn write(&self, version: i16, buf: &mut bytes::BytesMut) -> Result<(), EncodeError> { self.encode(version, buf) }
     fn read(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> { Self::decode(version, buf) }
 }
 
 impl crate::EncodableZeroCopy for UpdateMetadataRequest {
-    fn write_segmented(&self, version: i16, buf: &mut SegmentedBuf) { self.encode(version, buf) }
+    fn write_segmented(&self, version: i16, buf: &mut SegmentedBuf) -> Result<(), EncodeError> { self.encode(version, buf) }
 }
