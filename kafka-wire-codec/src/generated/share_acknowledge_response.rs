@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct ShareAcknowledgeTopicResponse {
     /// The unique topic ID.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// The topic partitions.
     pub partitions: Vec<PartitionData>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -69,7 +71,7 @@ pub struct PartitionData {
     /// The error code, or 0 if there was no error.
     pub error_code: i16,
     /// The error message, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// The current leader of the partition.
     pub current_leader: LeaderIdAndEpoch,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -86,7 +88,7 @@ impl PartitionData {
             size += 2;
         }
         {
-            size += compact_nullable_string_size(self.error_message.as_deref());
+            size += compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str()));
         }
         {
             size += self.current_leader.encoded_size(version);
@@ -103,7 +105,7 @@ impl PartitionData {
             put_i16(buf, self.error_code);
         }
         {
-            put_compact_nullable_string(buf, self.error_message.as_deref());
+            put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str()));
         }
         {
             self.current_leader.encode(version, buf);
@@ -179,13 +181,13 @@ impl LeaderIdAndEpoch {
 #[derive(Debug, Clone, Default)]
 pub struct NodeEndpoint {
     /// The ID of the associated node.
-    pub node_id: i32,
+    pub node_id: BrokerId,
     /// The node's hostname.
-    pub host: Bytes,
+    pub host: StrBytes,
     /// The node's port.
     pub port: i32,
     /// The rack of the node, or null if it has not been assigned to a rack.
-    pub rack: Option<Bytes>,
+    pub rack: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -197,13 +199,13 @@ impl NodeEndpoint {
             size += 4;
         }
         {
-            size += compact_string_size(&self.host);
+            size += compact_string_size(self.host.as_str());
         }
         {
             size += 4;
         }
         {
-            size += compact_nullable_string_size(self.rack.as_deref());
+            size += compact_nullable_string_size(self.rack.as_ref().map(|v| v.as_str()));
         }
         size += tagged_fields_size(&self.tagged_fields);
         size
@@ -211,16 +213,16 @@ impl NodeEndpoint {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_i32(buf, self.node_id);
+            put_i32(buf, self.node_id.0);
         }
         {
-            put_compact_string(buf, &self.host);
+            put_compact_string(buf, self.host.as_str());
         }
         {
             put_i32(buf, self.port);
         }
         {
-            put_compact_nullable_string(buf, self.rack.as_deref());
+            put_compact_nullable_string(buf, self.rack.as_ref().map(|v| v.as_str()));
         }
         put_tagged_fields(buf, &self.tagged_fields);
     }
@@ -228,7 +230,7 @@ impl NodeEndpoint {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = NodeEndpoint::default();
         {
-            msg.node_id = get_i32(buf)?;
+            msg.node_id = BrokerId(get_i32(buf)?);
         }
         {
             msg.host = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
@@ -252,7 +254,7 @@ pub struct ShareAcknowledgeResponse {
     /// The top level response error code.
     pub error_code: i16,
     /// The top-level error message, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// The time in milliseconds for which the acquired records are locked.
     pub acquisition_lock_timeout_ms: i32,
     /// The response topics.
@@ -281,7 +283,7 @@ impl ShareAcknowledgeResponse {
             size += 2;
         }
         {
-            size += compact_nullable_string_size(self.error_message.as_deref());
+            size += compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str()));
         }
         if version >= 2 {
             size += 4;
@@ -316,7 +318,7 @@ impl ShareAcknowledgeResponse {
             put_i16(buf, self.error_code);
         }
         {
-            put_compact_nullable_string(buf, self.error_message.as_deref());
+            put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str()));
         }
         if version >= 2 {
             put_i32(buf, self.acquisition_lock_timeout_ms);

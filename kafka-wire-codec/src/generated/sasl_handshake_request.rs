@@ -1,14 +1,16 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 0-1.
 #[derive(Debug, Clone, Default)]
 pub struct SaslHandshakeRequest {
     /// The SASL mechanism chosen by the client.
-    pub mechanism: Bytes,
+    pub mechanism: StrBytes,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -25,7 +27,7 @@ impl SaslHandshakeRequest {
             "unsupported version {} for api key {}", version, Self::API_KEY);
         let mut size = 0usize;
         {
-            size += string_size(&self.mechanism);
+            size += string_size(self.mechanism.as_str());
         }
         size
     }
@@ -34,7 +36,7 @@ impl SaslHandshakeRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            put_string(buf, &self.mechanism);
+            put_string(buf, self.mechanism.as_str());
         }
     }
 

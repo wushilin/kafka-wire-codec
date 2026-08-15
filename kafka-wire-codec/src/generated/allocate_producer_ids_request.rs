@@ -1,14 +1,16 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 0-0.
 #[derive(Debug, Clone)]
 pub struct AllocateProducerIdsRequest {
     /// The ID of the requesting broker.
-    pub broker_id: i32,
+    pub broker_id: BrokerId,
     /// The epoch of the requesting broker.
     pub broker_epoch: i64,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ pub struct AllocateProducerIdsRequest {
 impl Default for AllocateProducerIdsRequest {
     fn default() -> Self {
         Self {
-            broker_id: 0,
+            broker_id: BrokerId::default(),
             broker_epoch: -1,
             tagged_fields: Vec::new(),
         }
@@ -50,7 +52,7 @@ impl AllocateProducerIdsRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            put_i32(buf, self.broker_id);
+            put_i32(buf, self.broker_id.0);
         }
         {
             put_i64(buf, self.broker_epoch);
@@ -64,7 +66,7 @@ impl AllocateProducerIdsRequest {
         }
         let mut msg = AllocateProducerIdsRequest::default();
         {
-            msg.broker_id = get_i32(buf)?;
+            msg.broker_id = BrokerId(get_i32(buf)?);
         }
         {
             msg.broker_epoch = get_i64(buf)?;

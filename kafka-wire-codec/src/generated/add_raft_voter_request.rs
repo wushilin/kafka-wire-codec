@@ -1,15 +1,17 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct Listener {
     /// The name of the endpoint.
-    pub name: Bytes,
+    pub name: StrBytes,
     /// The hostname.
-    pub host: Bytes,
+    pub host: StrBytes,
     /// The port.
     pub port: u16,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -20,10 +22,10 @@ impl Listener {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.name);
+            size += compact_string_size(self.name.as_str());
         }
         {
-            size += compact_string_size(&self.host);
+            size += compact_string_size(self.host.as_str());
         }
         {
             size += 2;
@@ -34,10 +36,10 @@ impl Listener {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.name);
+            put_compact_string(buf, self.name.as_str());
         }
         {
-            put_compact_string(buf, &self.host);
+            put_compact_string(buf, self.host.as_str());
         }
         {
             put_u16(buf, self.port);
@@ -65,13 +67,13 @@ impl Listener {
 #[derive(Debug, Clone)]
 pub struct AddRaftVoterRequest {
     /// The cluster id.
-    pub cluster_id: Option<Bytes>,
+    pub cluster_id: Option<StrBytes>,
     /// The maximum time to wait for the request to complete before returning.
     pub timeout_ms: i32,
     /// The replica id of the voter getting added to the topic partition.
     pub voter_id: i32,
     /// The directory id of the voter getting added to the topic partition.
-    pub voter_directory_id: [u8; 16],
+    pub voter_directory_id: Uuid,
     /// The endpoints that can be used to communicate with the voter.
     pub listeners: Vec<Listener>,
     /// When true, return a response after the new voter set is committed. Otherwise, return after the leader writes the changes locally.
@@ -83,10 +85,10 @@ pub struct AddRaftVoterRequest {
 impl Default for AddRaftVoterRequest {
     fn default() -> Self {
         Self {
-            cluster_id: Some(Bytes::new()),
+            cluster_id: Some(StrBytes::new()),
             timeout_ms: 0,
             voter_id: 0,
-            voter_directory_id: [0u8; 16],
+            voter_directory_id: Uuid::nil(),
             listeners: Vec::new(),
             ack_when_committed: true,
             tagged_fields: Vec::new(),
@@ -106,7 +108,7 @@ impl AddRaftVoterRequest {
             "unsupported version {} for api key {}", version, Self::API_KEY);
         let mut size = 0usize;
         {
-            size += compact_nullable_string_size(self.cluster_id.as_deref());
+            size += compact_nullable_string_size(self.cluster_id.as_ref().map(|v| v.as_str()));
         }
         {
             size += 4;
@@ -136,7 +138,7 @@ impl AddRaftVoterRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            put_compact_nullable_string(buf, self.cluster_id.as_deref());
+            put_compact_nullable_string(buf, self.cluster_id.as_ref().map(|v| v.as_str()));
         }
         {
             put_i32(buf, self.timeout_ms);

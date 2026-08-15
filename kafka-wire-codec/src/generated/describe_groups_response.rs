@@ -1,23 +1,25 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct DescribedGroup {
     /// The describe error, or 0 if there was no error.
     pub error_code: i16,
     /// The describe error message, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// The group ID string.
-    pub group_id: Bytes,
+    pub group_id: GroupId,
     /// The group state string, or the empty string.
-    pub group_state: Bytes,
+    pub group_state: StrBytes,
     /// The group protocol type, or the empty string.
-    pub protocol_type: Bytes,
+    pub protocol_type: StrBytes,
     /// The group protocol data, or the empty string.
-    pub protocol_data: Bytes,
+    pub protocol_data: StrBytes,
     /// The group members.
     pub members: Vec<DescribedGroupMember>,
     /// 32-bit bitfield to represent authorized operations for this group.
@@ -31,10 +33,10 @@ impl Default for DescribedGroup {
         Self {
             error_code: 0,
             error_message: None,
-            group_id: Bytes::new(),
-            group_state: Bytes::new(),
-            protocol_type: Bytes::new(),
-            protocol_data: Bytes::new(),
+            group_id: GroupId::default(),
+            group_state: StrBytes::new(),
+            protocol_type: StrBytes::new(),
+            protocol_data: StrBytes::new(),
             members: Vec::new(),
             authorized_operations: -2147483648,
             tagged_fields: Vec::new(),
@@ -49,19 +51,19 @@ impl DescribedGroup {
             size += 2;
         }
         if version >= 6 {
-            size += if version >= 6 { if version >= 5 { compact_nullable_string_size(self.error_message.as_deref()) } else { nullable_string_size(self.error_message.as_deref()) } } else { let v = self.error_message.as_deref().expect("field error_message is None but not nullable at this version"); if version >= 5 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 6 { if version >= 5 { compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } } else { let v = self.error_message.as_ref().expect("field error_message is None but not nullable at this version"); if version >= 5 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         {
-            size += if version >= 5 { compact_string_size(&self.group_id) } else { string_size(&self.group_id) };
+            size += if version >= 5 { compact_string_size(self.group_id.as_str()) } else { string_size(self.group_id.as_str()) };
         }
         {
-            size += if version >= 5 { compact_string_size(&self.group_state) } else { string_size(&self.group_state) };
+            size += if version >= 5 { compact_string_size(self.group_state.as_str()) } else { string_size(self.group_state.as_str()) };
         }
         {
-            size += if version >= 5 { compact_string_size(&self.protocol_type) } else { string_size(&self.protocol_type) };
+            size += if version >= 5 { compact_string_size(self.protocol_type.as_str()) } else { string_size(self.protocol_type.as_str()) };
         }
         {
-            size += if version >= 5 { compact_string_size(&self.protocol_data) } else { string_size(&self.protocol_data) };
+            size += if version >= 5 { compact_string_size(self.protocol_data.as_str()) } else { string_size(self.protocol_data.as_str()) };
         }
         {
             { let arr = &self.members;
@@ -83,19 +85,19 @@ impl DescribedGroup {
             put_i16(buf, self.error_code);
         }
         if version >= 6 {
-            if version >= 6 { if version >= 5 { put_compact_nullable_string(buf, self.error_message.as_deref()) } else { put_nullable_string(buf, self.error_message.as_deref()) } } else { let v = self.error_message.as_deref().expect("field error_message is None but not nullable at this version"); if version >= 5 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 6 { if version >= 5 { put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } } else { let v = self.error_message.as_ref().expect("field error_message is None but not nullable at this version"); if version >= 5 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         {
-            if version >= 5 { put_compact_string(buf, &self.group_id) } else { put_string(buf, &self.group_id) };
+            if version >= 5 { put_compact_string(buf, self.group_id.as_str()) } else { put_string(buf, self.group_id.as_str()) };
         }
         {
-            if version >= 5 { put_compact_string(buf, &self.group_state) } else { put_string(buf, &self.group_state) };
+            if version >= 5 { put_compact_string(buf, self.group_state.as_str()) } else { put_string(buf, self.group_state.as_str()) };
         }
         {
-            if version >= 5 { put_compact_string(buf, &self.protocol_type) } else { put_string(buf, &self.protocol_type) };
+            if version >= 5 { put_compact_string(buf, self.protocol_type.as_str()) } else { put_string(buf, self.protocol_type.as_str()) };
         }
         {
-            if version >= 5 { put_compact_string(buf, &self.protocol_data) } else { put_string(buf, &self.protocol_data) };
+            if version >= 5 { put_compact_string(buf, self.protocol_data.as_str()) } else { put_string(buf, self.protocol_data.as_str()) };
         }
         {
             { let arr = &self.members;
@@ -118,7 +120,7 @@ impl DescribedGroup {
             msg.error_message = { let v = if version >= 5 { get_compact_string(buf)? } else { get_string(buf)? }; if version >= 6 { v } else { Some(v.ok_or(DecodeError::NullForNonNullable)?) } };
         }
         {
-            msg.group_id = (if version >= 5 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.group_id = GroupId((if version >= 5 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             msg.group_state = (if version >= 5 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
@@ -147,13 +149,13 @@ impl DescribedGroup {
 #[derive(Debug, Clone, Default)]
 pub struct DescribedGroupMember {
     /// The member id.
-    pub member_id: Bytes,
+    pub member_id: StrBytes,
     /// The unique identifier of the consumer instance provided by end user.
-    pub group_instance_id: Option<Bytes>,
+    pub group_instance_id: Option<StrBytes>,
     /// The client ID used in the member's latest join group request.
-    pub client_id: Bytes,
+    pub client_id: StrBytes,
     /// The client host.
-    pub client_host: Bytes,
+    pub client_host: StrBytes,
     /// The metadata corresponding to the current group protocol in use.
     pub member_metadata: Bytes,
     /// The current assignment provided by the group leader.
@@ -166,16 +168,16 @@ impl DescribedGroupMember {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 5 { compact_string_size(&self.member_id) } else { string_size(&self.member_id) };
+            size += if version >= 5 { compact_string_size(self.member_id.as_str()) } else { string_size(self.member_id.as_str()) };
         }
         if version >= 4 {
-            size += if version >= 4 { if version >= 5 { compact_nullable_string_size(self.group_instance_id.as_deref()) } else { nullable_string_size(self.group_instance_id.as_deref()) } } else { let v = self.group_instance_id.as_deref().expect("field group_instance_id is None but not nullable at this version"); if version >= 5 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 4 { if version >= 5 { compact_nullable_string_size(self.group_instance_id.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.group_instance_id.as_ref().map(|v| v.as_str())) } } else { let v = self.group_instance_id.as_ref().expect("field group_instance_id is None but not nullable at this version"); if version >= 5 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         {
-            size += if version >= 5 { compact_string_size(&self.client_id) } else { string_size(&self.client_id) };
+            size += if version >= 5 { compact_string_size(self.client_id.as_str()) } else { string_size(self.client_id.as_str()) };
         }
         {
-            size += if version >= 5 { compact_string_size(&self.client_host) } else { string_size(&self.client_host) };
+            size += if version >= 5 { compact_string_size(self.client_host.as_str()) } else { string_size(self.client_host.as_str()) };
         }
         {
             size += if version >= 5 { compact_bytes_size(&self.member_metadata) } else { bytes_size(&self.member_metadata) };
@@ -189,16 +191,16 @@ impl DescribedGroupMember {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 5 { put_compact_string(buf, &self.member_id) } else { put_string(buf, &self.member_id) };
+            if version >= 5 { put_compact_string(buf, self.member_id.as_str()) } else { put_string(buf, self.member_id.as_str()) };
         }
         if version >= 4 {
-            if version >= 4 { if version >= 5 { put_compact_nullable_string(buf, self.group_instance_id.as_deref()) } else { put_nullable_string(buf, self.group_instance_id.as_deref()) } } else { let v = self.group_instance_id.as_deref().expect("field group_instance_id is None but not nullable at this version"); if version >= 5 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 4 { if version >= 5 { put_compact_nullable_string(buf, self.group_instance_id.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.group_instance_id.as_ref().map(|v| v.as_str())) } } else { let v = self.group_instance_id.as_ref().expect("field group_instance_id is None but not nullable at this version"); if version >= 5 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         {
-            if version >= 5 { put_compact_string(buf, &self.client_id) } else { put_string(buf, &self.client_id) };
+            if version >= 5 { put_compact_string(buf, self.client_id.as_str()) } else { put_string(buf, self.client_id.as_str()) };
         }
         {
-            if version >= 5 { put_compact_string(buf, &self.client_host) } else { put_string(buf, &self.client_host) };
+            if version >= 5 { put_compact_string(buf, self.client_host.as_str()) } else { put_string(buf, self.client_host.as_str()) };
         }
         {
             if version >= 5 { put_compact_bytes_zc(buf, &self.member_metadata) } else { put_bytes_zc(buf, &self.member_metadata) };

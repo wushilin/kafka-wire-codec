@@ -1,15 +1,17 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct JoinGroupResponseMember {
     /// The group member ID.
-    pub member_id: Bytes,
+    pub member_id: StrBytes,
     /// The unique identifier of the consumer instance provided by end user.
-    pub group_instance_id: Option<Bytes>,
+    pub group_instance_id: Option<StrBytes>,
     /// The group member metadata.
     pub metadata: Bytes,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -20,10 +22,10 @@ impl JoinGroupResponseMember {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 6 { compact_string_size(&self.member_id) } else { string_size(&self.member_id) };
+            size += if version >= 6 { compact_string_size(self.member_id.as_str()) } else { string_size(self.member_id.as_str()) };
         }
         if version >= 5 {
-            size += if version >= 5 { if version >= 6 { compact_nullable_string_size(self.group_instance_id.as_deref()) } else { nullable_string_size(self.group_instance_id.as_deref()) } } else { let v = self.group_instance_id.as_deref().expect("field group_instance_id is None but not nullable at this version"); if version >= 6 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 5 { if version >= 6 { compact_nullable_string_size(self.group_instance_id.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.group_instance_id.as_ref().map(|v| v.as_str())) } } else { let v = self.group_instance_id.as_ref().expect("field group_instance_id is None but not nullable at this version"); if version >= 6 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         {
             size += if version >= 6 { compact_bytes_size(&self.metadata) } else { bytes_size(&self.metadata) };
@@ -34,10 +36,10 @@ impl JoinGroupResponseMember {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 6 { put_compact_string(buf, &self.member_id) } else { put_string(buf, &self.member_id) };
+            if version >= 6 { put_compact_string(buf, self.member_id.as_str()) } else { put_string(buf, self.member_id.as_str()) };
         }
         if version >= 5 {
-            if version >= 5 { if version >= 6 { put_compact_nullable_string(buf, self.group_instance_id.as_deref()) } else { put_nullable_string(buf, self.group_instance_id.as_deref()) } } else { let v = self.group_instance_id.as_deref().expect("field group_instance_id is None but not nullable at this version"); if version >= 6 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 5 { if version >= 6 { put_compact_nullable_string(buf, self.group_instance_id.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.group_instance_id.as_ref().map(|v| v.as_str())) } } else { let v = self.group_instance_id.as_ref().expect("field group_instance_id is None but not nullable at this version"); if version >= 6 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         {
             if version >= 6 { put_compact_bytes_zc(buf, &self.metadata) } else { put_bytes_zc(buf, &self.metadata) };
@@ -71,15 +73,15 @@ pub struct JoinGroupResponse {
     /// The generation ID of the group.
     pub generation_id: i32,
     /// The group protocol name.
-    pub protocol_type: Option<Bytes>,
+    pub protocol_type: Option<StrBytes>,
     /// The group protocol selected by the coordinator.
-    pub protocol_name: Option<Bytes>,
+    pub protocol_name: Option<StrBytes>,
     /// The leader of the group.
-    pub leader: Bytes,
+    pub leader: StrBytes,
     /// True if the leader must skip running the assignment.
     pub skip_assignment: bool,
     /// The member ID assigned by the group coordinator.
-    pub member_id: Bytes,
+    pub member_id: StrBytes,
     /// The group members.
     pub members: Vec<JoinGroupResponseMember>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -93,10 +95,10 @@ impl Default for JoinGroupResponse {
             error_code: 0,
             generation_id: -1,
             protocol_type: None,
-            protocol_name: Some(Bytes::new()),
-            leader: Bytes::new(),
+            protocol_name: Some(StrBytes::new()),
+            leader: StrBytes::new(),
             skip_assignment: false,
-            member_id: Bytes::new(),
+            member_id: StrBytes::new(),
             members: Vec::new(),
             tagged_fields: Vec::new(),
         }
@@ -124,19 +126,19 @@ impl JoinGroupResponse {
             size += 4;
         }
         if version >= 7 {
-            size += if version >= 7 { if version >= 6 { compact_nullable_string_size(self.protocol_type.as_deref()) } else { nullable_string_size(self.protocol_type.as_deref()) } } else { let v = self.protocol_type.as_deref().expect("field protocol_type is None but not nullable at this version"); if version >= 6 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 7 { if version >= 6 { compact_nullable_string_size(self.protocol_type.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.protocol_type.as_ref().map(|v| v.as_str())) } } else { let v = self.protocol_type.as_ref().expect("field protocol_type is None but not nullable at this version"); if version >= 6 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         {
-            size += if version >= 7 { if version >= 6 { compact_nullable_string_size(self.protocol_name.as_deref()) } else { nullable_string_size(self.protocol_name.as_deref()) } } else { let v = self.protocol_name.as_deref().expect("field protocol_name is None but not nullable at this version"); if version >= 6 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 7 { if version >= 6 { compact_nullable_string_size(self.protocol_name.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.protocol_name.as_ref().map(|v| v.as_str())) } } else { let v = self.protocol_name.as_ref().expect("field protocol_name is None but not nullable at this version"); if version >= 6 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         {
-            size += if version >= 6 { compact_string_size(&self.leader) } else { string_size(&self.leader) };
+            size += if version >= 6 { compact_string_size(self.leader.as_str()) } else { string_size(self.leader.as_str()) };
         }
         if version >= 9 {
             size += 1;
         }
         {
-            size += if version >= 6 { compact_string_size(&self.member_id) } else { string_size(&self.member_id) };
+            size += if version >= 6 { compact_string_size(self.member_id.as_str()) } else { string_size(self.member_id.as_str()) };
         }
         {
             { let arr = &self.members;
@@ -163,19 +165,19 @@ impl JoinGroupResponse {
             put_i32(buf, self.generation_id);
         }
         if version >= 7 {
-            if version >= 7 { if version >= 6 { put_compact_nullable_string(buf, self.protocol_type.as_deref()) } else { put_nullable_string(buf, self.protocol_type.as_deref()) } } else { let v = self.protocol_type.as_deref().expect("field protocol_type is None but not nullable at this version"); if version >= 6 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 7 { if version >= 6 { put_compact_nullable_string(buf, self.protocol_type.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.protocol_type.as_ref().map(|v| v.as_str())) } } else { let v = self.protocol_type.as_ref().expect("field protocol_type is None but not nullable at this version"); if version >= 6 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         {
-            if version >= 7 { if version >= 6 { put_compact_nullable_string(buf, self.protocol_name.as_deref()) } else { put_nullable_string(buf, self.protocol_name.as_deref()) } } else { let v = self.protocol_name.as_deref().expect("field protocol_name is None but not nullable at this version"); if version >= 6 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 7 { if version >= 6 { put_compact_nullable_string(buf, self.protocol_name.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.protocol_name.as_ref().map(|v| v.as_str())) } } else { let v = self.protocol_name.as_ref().expect("field protocol_name is None but not nullable at this version"); if version >= 6 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         {
-            if version >= 6 { put_compact_string(buf, &self.leader) } else { put_string(buf, &self.leader) };
+            if version >= 6 { put_compact_string(buf, self.leader.as_str()) } else { put_string(buf, self.leader.as_str()) };
         }
         if version >= 9 {
             put_bool(buf, self.skip_assignment);
         }
         {
-            if version >= 6 { put_compact_string(buf, &self.member_id) } else { put_string(buf, &self.member_id) };
+            if version >= 6 { put_compact_string(buf, self.member_id.as_str()) } else { put_string(buf, self.member_id.as_str()) };
         }
         {
             { let arr = &self.members;

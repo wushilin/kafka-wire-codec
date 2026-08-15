@@ -1,5 +1,7 @@
 use crate::error::DecodeError;
+use crate::types::StrBytes;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
+use uuid::Uuid;
 
 // ── Encode sinks ──────────────────────────────────────────────────────────────
 
@@ -150,11 +152,11 @@ pub fn get_bool(buf: &mut Bytes) -> Result<bool, DecodeError> {
     Ok(get_i8(buf)? != 0)
 }
 
-pub fn get_uuid(buf: &mut Bytes) -> Result<[u8; 16], DecodeError> {
+pub fn get_uuid(buf: &mut Bytes) -> Result<Uuid, DecodeError> {
     ensure(buf, 16)?;
     let mut uuid = [0u8; 16];
     buf.copy_to_slice(&mut uuid);
-    Ok(uuid)
+    Ok(Uuid::from_bytes(uuid))
 }
 
 /// Unsigned varint (used for compact array/string lengths and tagged fields).
@@ -197,19 +199,30 @@ pub fn get_varint(buf: &mut Bytes) -> Result<i64, DecodeError> {
 }
 
 /// Legacy string: int16 length (-1 = null), then UTF-8 bytes.
-pub fn get_string(buf: &mut Bytes) -> Result<Option<Bytes>, DecodeError> {
+///
+/// UTF-8 is validated here, once — the returned [`StrBytes`] is still a
+/// zero-copy slice of `buf`.
+pub fn get_string(buf: &mut Bytes) -> Result<Option<StrBytes>, DecodeError> {
     let len = get_i16(buf)?;
     if len < 0 {
         return Ok(None);
     }
     let len = len as usize;
     ensure(buf, len)?;
-    Ok(Some(buf.split_to(len)))
+    let raw = buf.split_to(len);
+    Ok(Some(
+        StrBytes::from_utf8(raw).map_err(|_| DecodeError::InvalidUtf8)?,
+    ))
 }
 
-/// Compact string: uvarint length (0 = null, N+1 = N bytes).
-pub fn get_compact_string(buf: &mut Bytes) -> Result<Option<Bytes>, DecodeError> {
-    get_compact_bytes(buf)
+/// Compact string: uvarint length (0 = null, N+1 = N bytes). UTF-8 validated.
+pub fn get_compact_string(buf: &mut Bytes) -> Result<Option<StrBytes>, DecodeError> {
+    match get_compact_bytes(buf)? {
+        None => Ok(None),
+        Some(raw) => Ok(Some(
+            StrBytes::from_utf8(raw).map_err(|_| DecodeError::InvalidUtf8)?,
+        )),
+    }
 }
 
 /// Legacy bytes: int32 length (-1 = null), then raw bytes.
@@ -268,23 +281,23 @@ pub fn varint_size(v: i64) -> usize {
     uvarint_size(((v << 1) ^ (v >> 63)) as u64)
 }
 
-pub fn string_size(s: &[u8]) -> usize {
+pub fn string_size(s: &str) -> usize {
     2 + s.len()
 }
 
-pub fn nullable_string_size(s: Option<&[u8]>) -> usize {
+pub fn nullable_string_size(s: Option<&str>) -> usize {
     match s {
         None => 2,
         Some(b) => 2 + b.len(),
     }
 }
 
-pub fn compact_string_size(s: &[u8]) -> usize {
-    compact_bytes_size(s)
+pub fn compact_string_size(s: &str) -> usize {
+    compact_bytes_size(s.as_bytes())
 }
 
-pub fn compact_nullable_string_size(s: Option<&[u8]>) -> usize {
-    compact_nullable_bytes_size(s)
+pub fn compact_nullable_string_size(s: Option<&str>) -> usize {
+    compact_nullable_bytes_size(s.map(str::as_bytes))
 }
 
 pub fn bytes_size(b: &[u8]) -> usize {
@@ -348,8 +361,8 @@ pub fn put_f64<B: WireBuf>(buf: &mut B, v: f64) {
 pub fn put_bool<B: WireBuf>(buf: &mut B, v: bool) {
     buf.put_u8(if v { 1 } else { 0 });
 }
-pub fn put_uuid<B: WireBuf>(buf: &mut B, v: &[u8; 16]) {
-    buf.put_slice(v);
+pub fn put_uuid<B: WireBuf>(buf: &mut B, v: &Uuid) {
+    buf.put_slice(v.as_bytes());
 }
 
 pub fn put_uvarint<B: WireBuf>(buf: &mut B, mut v: u64) {
@@ -370,7 +383,7 @@ pub fn put_varint<B: WireBuf>(buf: &mut B, v: i64) {
     put_uvarint(buf, ((v << 1) ^ (v >> 63)) as u64);
 }
 
-pub fn put_string<B: WireBuf>(buf: &mut B, s: &[u8]) {
+pub fn put_string<B: WireBuf>(buf: &mut B, s: &str) {
     // A silent `as i16` wrap would emit a corrupt frame; oversized strings are
     // a caller bug (valid decoded frames can never contain one).
     assert!(
@@ -380,22 +393,22 @@ pub fn put_string<B: WireBuf>(buf: &mut B, s: &[u8]) {
         i16::MAX
     );
     put_i16(buf, s.len() as i16);
-    buf.put_slice(s);
+    buf.put_slice(s.as_bytes());
 }
 
-pub fn put_nullable_string<B: WireBuf>(buf: &mut B, s: Option<&[u8]>) {
+pub fn put_nullable_string<B: WireBuf>(buf: &mut B, s: Option<&str>) {
     match s {
         None => put_i16(buf, -1),
         Some(b) => put_string(buf, b),
     }
 }
 
-pub fn put_compact_string<B: WireBuf>(buf: &mut B, s: &[u8]) {
-    put_compact_bytes(buf, s);
+pub fn put_compact_string<B: WireBuf>(buf: &mut B, s: &str) {
+    put_compact_bytes(buf, s.as_bytes());
 }
 
-pub fn put_compact_nullable_string<B: WireBuf>(buf: &mut B, s: Option<&[u8]>) {
-    put_compact_nullable_bytes(buf, s);
+pub fn put_compact_nullable_string<B: WireBuf>(buf: &mut B, s: Option<&str>) {
+    put_compact_nullable_bytes(buf, s.map(str::as_bytes));
 }
 
 pub fn put_bytes<B: WireBuf>(buf: &mut B, b: &[u8]) {

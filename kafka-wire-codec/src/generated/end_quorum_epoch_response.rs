@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct TopicData {
     /// The topic name.
-    pub topic_name: Bytes,
+    pub topic_name: TopicName,
     /// The partition data.
     pub partitions: Vec<PartitionData>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl TopicData {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 1 { compact_string_size(&self.topic_name) } else { string_size(&self.topic_name) };
+            size += if version >= 1 { compact_string_size(self.topic_name.as_str()) } else { string_size(self.topic_name.as_str()) };
         }
         {
             { let arr = &self.partitions;
@@ -34,7 +36,7 @@ impl TopicData {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 1 { put_compact_string(buf, &self.topic_name) } else { put_string(buf, &self.topic_name) };
+            if version >= 1 { put_compact_string(buf, self.topic_name.as_str()) } else { put_string(buf, self.topic_name.as_str()) };
         }
         {
             { let arr = &self.partitions;
@@ -48,7 +50,7 @@ impl TopicData {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = TopicData::default();
         {
-            msg.topic_name = (if version >= 1 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.topic_name = TopicName((if version >= 1 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = if version >= 1 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };
@@ -69,7 +71,7 @@ pub struct PartitionData {
     /// The partition level error code.
     pub error_code: i16,
     /// The ID of the current leader or -1 if the leader is unknown.
-    pub leader_id: i32,
+    pub leader_id: BrokerId,
     /// The latest known leader epoch.
     pub leader_epoch: i32,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -103,7 +105,7 @@ impl PartitionData {
             put_i16(buf, self.error_code);
         }
         {
-            put_i32(buf, self.leader_id);
+            put_i32(buf, self.leader_id.0);
         }
         {
             put_i32(buf, self.leader_epoch);
@@ -120,7 +122,7 @@ impl PartitionData {
             msg.error_code = get_i16(buf)?;
         }
         {
-            msg.leader_id = get_i32(buf)?;
+            msg.leader_id = BrokerId(get_i32(buf)?);
         }
         {
             msg.leader_epoch = get_i32(buf)?;
@@ -133,9 +135,9 @@ impl PartitionData {
 #[derive(Debug, Clone, Default)]
 pub struct NodeEndpoint {
     /// The ID of the associated node.
-    pub node_id: i32,
+    pub node_id: BrokerId,
     /// The node's hostname.
-    pub host: Bytes,
+    pub host: StrBytes,
     /// The node's port.
     pub port: u16,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -149,7 +151,7 @@ impl NodeEndpoint {
             size += 4;
         }
         if version >= 1 {
-            size += if version >= 1 { compact_string_size(&self.host) } else { string_size(&self.host) };
+            size += if version >= 1 { compact_string_size(self.host.as_str()) } else { string_size(self.host.as_str()) };
         }
         if version >= 1 {
             size += 2;
@@ -160,10 +162,10 @@ impl NodeEndpoint {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 1 {
-            put_i32(buf, self.node_id);
+            put_i32(buf, self.node_id.0);
         }
         if version >= 1 {
-            if version >= 1 { put_compact_string(buf, &self.host) } else { put_string(buf, &self.host) };
+            if version >= 1 { put_compact_string(buf, self.host.as_str()) } else { put_string(buf, self.host.as_str()) };
         }
         if version >= 1 {
             put_u16(buf, self.port);
@@ -174,7 +176,7 @@ impl NodeEndpoint {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = NodeEndpoint::default();
         if version >= 1 {
-            msg.node_id = get_i32(buf)?;
+            msg.node_id = BrokerId(get_i32(buf)?);
         }
         if version >= 1 {
             msg.host = (if version >= 1 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;

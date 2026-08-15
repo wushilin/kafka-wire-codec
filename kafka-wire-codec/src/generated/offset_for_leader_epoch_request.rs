@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct OffsetForLeaderTopic {
     /// The topic name.
-    pub topic: Bytes,
+    pub topic: TopicName,
     /// Each partition to get offsets for.
     pub partitions: Vec<OffsetForLeaderPartition>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl OffsetForLeaderTopic {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 4 { compact_string_size(&self.topic) } else { string_size(&self.topic) };
+            size += if version >= 4 { compact_string_size(self.topic.as_str()) } else { string_size(self.topic.as_str()) };
         }
         {
             { let arr = &self.partitions;
@@ -34,7 +36,7 @@ impl OffsetForLeaderTopic {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 4 { put_compact_string(buf, &self.topic) } else { put_string(buf, &self.topic) };
+            if version >= 4 { put_compact_string(buf, self.topic.as_str()) } else { put_string(buf, self.topic.as_str()) };
         }
         {
             { let arr = &self.partitions;
@@ -48,7 +50,7 @@ impl OffsetForLeaderTopic {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = OffsetForLeaderTopic::default();
         {
-            msg.topic = (if version >= 4 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.topic = TopicName((if version >= 4 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = if version >= 4 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };
@@ -134,7 +136,7 @@ impl OffsetForLeaderPartition {
 #[derive(Debug, Clone)]
 pub struct OffsetForLeaderEpochRequest {
     /// The broker ID of the follower, of -1 if this request is from a consumer.
-    pub replica_id: i32,
+    pub replica_id: BrokerId,
     /// Each topic to get offsets for.
     pub topics: Vec<OffsetForLeaderTopic>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -144,7 +146,7 @@ pub struct OffsetForLeaderEpochRequest {
 impl Default for OffsetForLeaderEpochRequest {
     fn default() -> Self {
         Self {
-            replica_id: -2,
+            replica_id: BrokerId(-2),
             topics: Vec::new(),
             tagged_fields: Vec::new(),
         }
@@ -181,7 +183,7 @@ impl OffsetForLeaderEpochRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         if version >= 3 {
-            put_i32(buf, self.replica_id);
+            put_i32(buf, self.replica_id.0);
         }
         {
             { let arr = &self.topics;
@@ -198,7 +200,7 @@ impl OffsetForLeaderEpochRequest {
         }
         let mut msg = OffsetForLeaderEpochRequest::default();
         if version >= 3 {
-            msg.replica_id = get_i32(buf)?;
+            msg.replica_id = BrokerId(get_i32(buf)?);
         }
         {
             let len_opt = if version >= 4 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };

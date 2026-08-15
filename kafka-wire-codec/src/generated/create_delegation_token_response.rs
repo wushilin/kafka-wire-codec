@@ -1,8 +1,10 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 1-3.
 #[derive(Debug, Clone, Default)]
@@ -10,13 +12,13 @@ pub struct CreateDelegationTokenResponse {
     /// The top-level error, or zero if there was no error.
     pub error_code: i16,
     /// The principal type of the token owner.
-    pub principal_type: Bytes,
+    pub principal_type: StrBytes,
     /// The name of the token owner.
-    pub principal_name: Bytes,
+    pub principal_name: StrBytes,
     /// The principal type of the requester of the token.
-    pub token_requester_principal_type: Bytes,
+    pub token_requester_principal_type: StrBytes,
     /// The principal type of the requester of the token.
-    pub token_requester_principal_name: Bytes,
+    pub token_requester_principal_name: StrBytes,
     /// When this token was generated.
     pub issue_timestamp_ms: i64,
     /// When this token expires.
@@ -24,7 +26,7 @@ pub struct CreateDelegationTokenResponse {
     /// The maximum lifetime of this token.
     pub max_timestamp_ms: i64,
     /// The token UUID.
-    pub token_id: Bytes,
+    pub token_id: StrBytes,
     /// HMAC of the delegation token.
     pub hmac: Bytes,
     /// The duration in milliseconds for which the request was throttled due to a quota violation, or zero if the request did not violate any quota.
@@ -48,16 +50,16 @@ impl CreateDelegationTokenResponse {
             size += 2;
         }
         {
-            size += if version >= 2 { compact_string_size(&self.principal_type) } else { string_size(&self.principal_type) };
+            size += if version >= 2 { compact_string_size(self.principal_type.as_str()) } else { string_size(self.principal_type.as_str()) };
         }
         {
-            size += if version >= 2 { compact_string_size(&self.principal_name) } else { string_size(&self.principal_name) };
+            size += if version >= 2 { compact_string_size(self.principal_name.as_str()) } else { string_size(self.principal_name.as_str()) };
         }
         if version >= 3 {
-            size += if version >= 2 { compact_string_size(&self.token_requester_principal_type) } else { string_size(&self.token_requester_principal_type) };
+            size += if version >= 2 { compact_string_size(self.token_requester_principal_type.as_str()) } else { string_size(self.token_requester_principal_type.as_str()) };
         }
         if version >= 3 {
-            size += if version >= 2 { compact_string_size(&self.token_requester_principal_name) } else { string_size(&self.token_requester_principal_name) };
+            size += if version >= 2 { compact_string_size(self.token_requester_principal_name.as_str()) } else { string_size(self.token_requester_principal_name.as_str()) };
         }
         {
             size += 8;
@@ -69,7 +71,7 @@ impl CreateDelegationTokenResponse {
             size += 8;
         }
         {
-            size += if version >= 2 { compact_string_size(&self.token_id) } else { string_size(&self.token_id) };
+            size += if version >= 2 { compact_string_size(self.token_id.as_str()) } else { string_size(self.token_id.as_str()) };
         }
         {
             size += if version >= 2 { compact_bytes_size(&self.hmac) } else { bytes_size(&self.hmac) };
@@ -88,16 +90,16 @@ impl CreateDelegationTokenResponse {
             put_i16(buf, self.error_code);
         }
         {
-            if version >= 2 { put_compact_string(buf, &self.principal_type) } else { put_string(buf, &self.principal_type) };
+            if version >= 2 { put_compact_string(buf, self.principal_type.as_str()) } else { put_string(buf, self.principal_type.as_str()) };
         }
         {
-            if version >= 2 { put_compact_string(buf, &self.principal_name) } else { put_string(buf, &self.principal_name) };
+            if version >= 2 { put_compact_string(buf, self.principal_name.as_str()) } else { put_string(buf, self.principal_name.as_str()) };
         }
         if version >= 3 {
-            if version >= 2 { put_compact_string(buf, &self.token_requester_principal_type) } else { put_string(buf, &self.token_requester_principal_type) };
+            if version >= 2 { put_compact_string(buf, self.token_requester_principal_type.as_str()) } else { put_string(buf, self.token_requester_principal_type.as_str()) };
         }
         if version >= 3 {
-            if version >= 2 { put_compact_string(buf, &self.token_requester_principal_name) } else { put_string(buf, &self.token_requester_principal_name) };
+            if version >= 2 { put_compact_string(buf, self.token_requester_principal_name.as_str()) } else { put_string(buf, self.token_requester_principal_name.as_str()) };
         }
         {
             put_i64(buf, self.issue_timestamp_ms);
@@ -109,7 +111,7 @@ impl CreateDelegationTokenResponse {
             put_i64(buf, self.max_timestamp_ms);
         }
         {
-            if version >= 2 { put_compact_string(buf, &self.token_id) } else { put_string(buf, &self.token_id) };
+            if version >= 2 { put_compact_string(buf, self.token_id.as_str()) } else { put_string(buf, self.token_id.as_str()) };
         }
         {
             if version >= 2 { put_compact_bytes_zc(buf, &self.hmac) } else { put_bytes_zc(buf, &self.hmac) };

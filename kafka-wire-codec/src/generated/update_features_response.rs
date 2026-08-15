@@ -1,17 +1,19 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct UpdatableFeatureResult {
     /// The name of the finalized feature.
-    pub feature: Bytes,
+    pub feature: StrBytes,
     /// The feature update error code or `0` if the feature update succeeded.
     pub error_code: i16,
     /// The feature update error, or `null` if the feature update succeeded.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -19,9 +21,9 @@ pub struct UpdatableFeatureResult {
 impl Default for UpdatableFeatureResult {
     fn default() -> Self {
         Self {
-            feature: Bytes::new(),
+            feature: StrBytes::new(),
             error_code: 0,
-            error_message: Some(Bytes::new()),
+            error_message: Some(StrBytes::new()),
             tagged_fields: Vec::new(),
         }
     }
@@ -31,13 +33,13 @@ impl UpdatableFeatureResult {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.feature);
+            size += compact_string_size(self.feature.as_str());
         }
         {
             size += 2;
         }
         {
-            size += compact_nullable_string_size(self.error_message.as_deref());
+            size += compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str()));
         }
         size += tagged_fields_size(&self.tagged_fields);
         size
@@ -45,13 +47,13 @@ impl UpdatableFeatureResult {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.feature);
+            put_compact_string(buf, self.feature.as_str());
         }
         {
             put_i16(buf, self.error_code);
         }
         {
-            put_compact_nullable_string(buf, self.error_message.as_deref());
+            put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str()));
         }
         put_tagged_fields(buf, &self.tagged_fields);
     }
@@ -80,7 +82,7 @@ pub struct UpdateFeaturesResponse {
     /// The top-level error code, or `0` if there was no top-level error.
     pub error_code: i16,
     /// The top-level error message, or `null` if there was no top-level error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// Results for each feature update.
     pub results: Vec<UpdatableFeatureResult>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -92,7 +94,7 @@ impl Default for UpdateFeaturesResponse {
         Self {
             throttle_time_ms: 0,
             error_code: 0,
-            error_message: Some(Bytes::new()),
+            error_message: Some(StrBytes::new()),
             results: Vec::new(),
             tagged_fields: Vec::new(),
         }
@@ -117,7 +119,7 @@ impl UpdateFeaturesResponse {
             size += 2;
         }
         {
-            size += compact_nullable_string_size(self.error_message.as_deref());
+            size += compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str()));
         }
         if version <= 1 {
             { let arr = &self.results;
@@ -141,7 +143,7 @@ impl UpdateFeaturesResponse {
             put_i16(buf, self.error_code);
         }
         {
-            put_compact_nullable_string(buf, self.error_message.as_deref());
+            put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str()));
         }
         if version <= 1 {
             { let arr = &self.results;

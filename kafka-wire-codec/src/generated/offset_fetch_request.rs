@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct OffsetFetchRequestTopic {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The partition indexes we would like to fetch offsets for.
     pub partition_indexes: Vec<i32>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl OffsetFetchRequestTopic {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version <= 7 {
-            size += if version >= 6 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 6 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         if version <= 7 {
             { let arr = &self.partition_indexes;
@@ -32,7 +34,7 @@ impl OffsetFetchRequestTopic {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version <= 7 {
-            if version >= 6 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 6 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         if version <= 7 {
             { let arr = &self.partition_indexes;
@@ -46,7 +48,7 @@ impl OffsetFetchRequestTopic {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = OffsetFetchRequestTopic::default();
         if version <= 7 {
-            msg.name = (if version >= 6 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((if version >= 6 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         if version <= 7 {
             let len_opt = if version >= 6 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };
@@ -63,9 +65,9 @@ impl OffsetFetchRequestTopic {
 #[derive(Debug, Clone)]
 pub struct OffsetFetchRequestGroup {
     /// The group ID.
-    pub group_id: Bytes,
+    pub group_id: GroupId,
     /// The member id.
-    pub member_id: Option<Bytes>,
+    pub member_id: Option<StrBytes>,
     /// The member epoch if using the new consumer protocol (KIP-848).
     pub member_epoch: i32,
     /// Each topic we would like to fetch offsets for, or null to fetch offsets for all topics.
@@ -77,7 +79,7 @@ pub struct OffsetFetchRequestGroup {
 impl Default for OffsetFetchRequestGroup {
     fn default() -> Self {
         Self {
-            group_id: Bytes::new(),
+            group_id: GroupId::default(),
             member_id: None,
             member_epoch: -1,
             topics: Some(Vec::new()),
@@ -90,10 +92,10 @@ impl OffsetFetchRequestGroup {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version >= 8 {
-            size += if version >= 6 { compact_string_size(&self.group_id) } else { string_size(&self.group_id) };
+            size += if version >= 6 { compact_string_size(self.group_id.as_str()) } else { string_size(self.group_id.as_str()) };
         }
         if version >= 9 {
-            size += if version >= 9 { if version >= 6 { compact_nullable_string_size(self.member_id.as_deref()) } else { nullable_string_size(self.member_id.as_deref()) } } else { let v = self.member_id.as_deref().expect("field member_id is None but not nullable at this version"); if version >= 6 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 9 { if version >= 6 { compact_nullable_string_size(self.member_id.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.member_id.as_ref().map(|v| v.as_str())) } } else { let v = self.member_id.as_ref().expect("field member_id is None but not nullable at this version"); if version >= 6 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         if version >= 9 {
             size += 4;
@@ -118,10 +120,10 @@ impl OffsetFetchRequestGroup {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 8 {
-            if version >= 6 { put_compact_string(buf, &self.group_id) } else { put_string(buf, &self.group_id) };
+            if version >= 6 { put_compact_string(buf, self.group_id.as_str()) } else { put_string(buf, self.group_id.as_str()) };
         }
         if version >= 9 {
-            if version >= 9 { if version >= 6 { put_compact_nullable_string(buf, self.member_id.as_deref()) } else { put_nullable_string(buf, self.member_id.as_deref()) } } else { let v = self.member_id.as_deref().expect("field member_id is None but not nullable at this version"); if version >= 6 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 9 { if version >= 6 { put_compact_nullable_string(buf, self.member_id.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.member_id.as_ref().map(|v| v.as_str())) } } else { let v = self.member_id.as_ref().expect("field member_id is None but not nullable at this version"); if version >= 6 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         if version >= 9 {
             put_i32(buf, self.member_epoch);
@@ -144,7 +146,7 @@ impl OffsetFetchRequestGroup {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = OffsetFetchRequestGroup::default();
         if version >= 8 {
-            msg.group_id = (if version >= 6 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.group_id = GroupId((if version >= 6 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         if version >= 9 {
             msg.member_id = { let v = if version >= 6 { get_compact_string(buf)? } else { get_string(buf)? }; if version >= 9 { v } else { Some(v.ok_or(DecodeError::NullForNonNullable)?) } };
@@ -171,9 +173,9 @@ impl OffsetFetchRequestGroup {
 #[derive(Debug, Clone, Default)]
 pub struct OffsetFetchRequestTopics {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The topic ID.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// The partition indexes we would like to fetch offsets for.
     pub partition_indexes: Vec<i32>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -184,7 +186,7 @@ impl OffsetFetchRequestTopics {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version >= 8 && version <= 9 {
-            size += if version >= 6 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 6 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         if version >= 10 {
             size += 16;
@@ -201,7 +203,7 @@ impl OffsetFetchRequestTopics {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 8 && version <= 9 {
-            if version >= 6 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 6 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         if version >= 10 {
             put_uuid(buf, &self.topic_id);
@@ -218,7 +220,7 @@ impl OffsetFetchRequestTopics {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = OffsetFetchRequestTopics::default();
         if version >= 8 && version <= 9 {
-            msg.name = (if version >= 6 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((if version >= 6 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         if version >= 10 {
             msg.topic_id = get_uuid(buf)?;
@@ -239,7 +241,7 @@ impl OffsetFetchRequestTopics {
 #[derive(Debug, Clone)]
 pub struct OffsetFetchRequest {
     /// The group to fetch offsets for.
-    pub group_id: Bytes,
+    pub group_id: GroupId,
     /// Each topic we would like to fetch offsets for, or null to fetch offsets for all topics.
     pub topics: Option<Vec<OffsetFetchRequestTopic>>,
     /// Each group we would like to fetch offsets for.
@@ -253,7 +255,7 @@ pub struct OffsetFetchRequest {
 impl Default for OffsetFetchRequest {
     fn default() -> Self {
         Self {
-            group_id: Bytes::new(),
+            group_id: GroupId::default(),
             topics: Some(Vec::new()),
             groups: Vec::new(),
             require_stable: false,
@@ -274,7 +276,7 @@ impl OffsetFetchRequest {
             "unsupported version {} for api key {}", version, Self::API_KEY);
         let mut size = 0usize;
         if version <= 7 {
-            size += if version >= 6 { compact_string_size(&self.group_id) } else { string_size(&self.group_id) };
+            size += if version >= 6 { compact_string_size(self.group_id.as_str()) } else { string_size(self.group_id.as_str()) };
         }
         if version <= 7 {
             match &self.topics {
@@ -309,7 +311,7 @@ impl OffsetFetchRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         if version <= 7 {
-            if version >= 6 { put_compact_string(buf, &self.group_id) } else { put_string(buf, &self.group_id) };
+            if version >= 6 { put_compact_string(buf, self.group_id.as_str()) } else { put_string(buf, self.group_id.as_str()) };
         }
         if version <= 7 {
             match &self.topics {
@@ -341,7 +343,7 @@ impl OffsetFetchRequest {
         }
         let mut msg = OffsetFetchRequest::default();
         if version <= 7 {
-            msg.group_id = (if version >= 6 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.group_id = GroupId((if version >= 6 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         if version <= 7 {
             let len_opt = if version >= 6 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };

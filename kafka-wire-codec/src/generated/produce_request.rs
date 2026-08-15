@@ -1,15 +1,17 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct TopicProduceData {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The unique topic ID
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// Each partition to produce to.
     pub partition_data: Vec<PartitionProduceData>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -20,7 +22,7 @@ impl TopicProduceData {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version <= 12 {
-            size += if version >= 9 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 9 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         if version >= 13 {
             size += 16;
@@ -39,7 +41,7 @@ impl TopicProduceData {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version <= 12 {
-            if version >= 9 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 9 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         if version >= 13 {
             put_uuid(buf, &self.topic_id);
@@ -56,7 +58,7 @@ impl TopicProduceData {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = TopicProduceData::default();
         if version <= 12 {
-            msg.name = (if version >= 9 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((if version >= 9 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         if version >= 13 {
             msg.topic_id = get_uuid(buf)?;
@@ -133,7 +135,7 @@ impl PartitionProduceData {
 #[derive(Debug, Clone, Default)]
 pub struct ProduceRequest {
     /// The transactional ID, or null if the producer is not transactional.
-    pub transactional_id: Option<Bytes>,
+    pub transactional_id: Option<TransactionalId>,
     /// The number of acknowledgments the producer requires the leader to have received before considering a request complete. Allowed values: 0 for no acknowledgments, 1 for only the leader and -1 for the full ISR.
     pub acks: i16,
     /// The timeout to await a response in milliseconds.
@@ -156,7 +158,7 @@ impl ProduceRequest {
             "unsupported version {} for api key {}", version, Self::API_KEY);
         let mut size = 0usize;
         if version >= 3 {
-            size += if version >= 3 { if version >= 9 { compact_nullable_string_size(self.transactional_id.as_deref()) } else { nullable_string_size(self.transactional_id.as_deref()) } } else { let v = self.transactional_id.as_deref().expect("field transactional_id is None but not nullable at this version"); if version >= 9 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 3 { if version >= 9 { compact_nullable_string_size(self.transactional_id.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.transactional_id.as_ref().map(|v| v.as_str())) } } else { let v = self.transactional_id.as_ref().expect("field transactional_id is None but not nullable at this version"); if version >= 9 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         {
             size += 2;
@@ -180,7 +182,7 @@ impl ProduceRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         if version >= 3 {
-            if version >= 3 { if version >= 9 { put_compact_nullable_string(buf, self.transactional_id.as_deref()) } else { put_nullable_string(buf, self.transactional_id.as_deref()) } } else { let v = self.transactional_id.as_deref().expect("field transactional_id is None but not nullable at this version"); if version >= 9 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 3 { if version >= 9 { put_compact_nullable_string(buf, self.transactional_id.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.transactional_id.as_ref().map(|v| v.as_str())) } } else { let v = self.transactional_id.as_ref().expect("field transactional_id is None but not nullable at this version"); if version >= 9 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         {
             put_i16(buf, self.acks);
@@ -203,7 +205,7 @@ impl ProduceRequest {
         }
         let mut msg = ProduceRequest::default();
         if version >= 3 {
-            msg.transactional_id = { let v = if version >= 9 { get_compact_string(buf)? } else { get_string(buf)? }; if version >= 3 { v } else { Some(v.ok_or(DecodeError::NullForNonNullable)?) } };
+            msg.transactional_id = { let v = if version >= 9 { get_compact_string(buf)? } else { get_string(buf)? }; if version >= 3 { v } else { Some(v.ok_or(DecodeError::NullForNonNullable)?) } }.map(TransactionalId);
         }
         {
             msg.acks = get_i16(buf)?;

@@ -1,15 +1,17 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct Listener {
     /// The name of the endpoint.
-    pub name: Bytes,
+    pub name: StrBytes,
     /// The hostname.
-    pub host: Bytes,
+    pub host: StrBytes,
     /// The port.
     pub port: u16,
     /// The security protocol.
@@ -22,10 +24,10 @@ impl Listener {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.name);
+            size += compact_string_size(self.name.as_str());
         }
         {
-            size += compact_string_size(&self.host);
+            size += compact_string_size(self.host.as_str());
         }
         {
             size += 2;
@@ -39,10 +41,10 @@ impl Listener {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.name);
+            put_compact_string(buf, self.name.as_str());
         }
         {
-            put_compact_string(buf, &self.host);
+            put_compact_string(buf, self.host.as_str());
         }
         {
             put_u16(buf, self.port);
@@ -75,7 +77,7 @@ impl Listener {
 #[derive(Debug, Clone, Default)]
 pub struct Feature {
     /// The feature name.
-    pub name: Bytes,
+    pub name: StrBytes,
     /// The minimum supported feature level.
     pub min_supported_version: i16,
     /// The maximum supported feature level.
@@ -88,7 +90,7 @@ impl Feature {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.name);
+            size += compact_string_size(self.name.as_str());
         }
         {
             size += 2;
@@ -102,7 +104,7 @@ impl Feature {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.name);
+            put_compact_string(buf, self.name.as_str());
         }
         {
             put_i16(buf, self.min_supported_version);
@@ -135,7 +137,7 @@ pub struct ControllerRegistrationRequest {
     /// The ID of the controller to register.
     pub controller_id: i32,
     /// The controller incarnation ID, which is unique to each process run.
-    pub incarnation_id: [u8; 16],
+    pub incarnation_id: Uuid,
     /// Set if the required configurations for ZK migration are present.
     pub zk_migration_ready: bool,
     /// The listeners of this controller.

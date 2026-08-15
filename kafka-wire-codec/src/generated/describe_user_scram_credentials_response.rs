@@ -1,17 +1,19 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct DescribeUserScramCredentialsResult {
     /// The user name.
-    pub user: Bytes,
+    pub user: StrBytes,
     /// The user-level error code.
     pub error_code: i16,
     /// The user-level error message, if any.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// The mechanism and related information associated with the user's SCRAM credentials.
     pub credential_infos: Vec<CredentialInfo>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -21,9 +23,9 @@ pub struct DescribeUserScramCredentialsResult {
 impl Default for DescribeUserScramCredentialsResult {
     fn default() -> Self {
         Self {
-            user: Bytes::new(),
+            user: StrBytes::new(),
             error_code: 0,
-            error_message: Some(Bytes::new()),
+            error_message: Some(StrBytes::new()),
             credential_infos: Vec::new(),
             tagged_fields: Vec::new(),
         }
@@ -34,13 +36,13 @@ impl DescribeUserScramCredentialsResult {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.user);
+            size += compact_string_size(self.user.as_str());
         }
         {
             size += 2;
         }
         {
-            size += compact_nullable_string_size(self.error_message.as_deref());
+            size += compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str()));
         }
         {
             { let arr = &self.credential_infos;
@@ -56,13 +58,13 @@ impl DescribeUserScramCredentialsResult {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.user);
+            put_compact_string(buf, self.user.as_str());
         }
         {
             put_i16(buf, self.error_code);
         }
         {
-            put_compact_nullable_string(buf, self.error_message.as_deref());
+            put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str()));
         }
         {
             { let arr = &self.credential_infos;
@@ -150,7 +152,7 @@ pub struct DescribeUserScramCredentialsResponse {
     /// The message-level error code, 0 except for user authorization or infrastructure issues.
     pub error_code: i16,
     /// The message-level error message, if any.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// The results for descriptions, one per user.
     pub results: Vec<DescribeUserScramCredentialsResult>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -162,7 +164,7 @@ impl Default for DescribeUserScramCredentialsResponse {
         Self {
             throttle_time_ms: 0,
             error_code: 0,
-            error_message: Some(Bytes::new()),
+            error_message: Some(StrBytes::new()),
             results: Vec::new(),
             tagged_fields: Vec::new(),
         }
@@ -187,7 +189,7 @@ impl DescribeUserScramCredentialsResponse {
             size += 2;
         }
         {
-            size += compact_nullable_string_size(self.error_message.as_deref());
+            size += compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str()));
         }
         {
             { let arr = &self.results;
@@ -211,7 +213,7 @@ impl DescribeUserScramCredentialsResponse {
             put_i16(buf, self.error_code);
         }
         {
-            put_compact_nullable_string(buf, self.error_message.as_deref());
+            put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str()));
         }
         {
             { let arr = &self.results;

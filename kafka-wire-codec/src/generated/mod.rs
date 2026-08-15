@@ -120,6 +120,7 @@ pub mod initialize_share_group_state_request;
 pub mod initialize_share_group_state_response;
 pub mod join_group_request;
 pub mod join_group_response;
+pub mod kinds;
 pub mod leader_and_isr_request;
 pub mod leader_and_isr_response;
 pub mod leave_group_request;

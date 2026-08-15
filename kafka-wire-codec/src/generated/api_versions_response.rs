@@ -1,8 +1,10 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct ApiVersion {
@@ -64,7 +66,7 @@ impl ApiVersion {
 #[derive(Debug, Clone, Default)]
 pub struct SupportedFeatureKey {
     /// The name of the feature.
-    pub name: Bytes,
+    pub name: StrBytes,
     /// The minimum supported version for the feature.
     pub min_version: i16,
     /// The maximum supported version for the feature.
@@ -77,7 +79,7 @@ impl SupportedFeatureKey {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version >= 3 {
-            size += if version >= 3 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 3 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         if version >= 3 {
             size += 2;
@@ -91,7 +93,7 @@ impl SupportedFeatureKey {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 3 {
-            if version >= 3 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 3 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         if version >= 3 {
             put_i16(buf, self.min_version);
@@ -121,7 +123,7 @@ impl SupportedFeatureKey {
 #[derive(Debug, Clone, Default)]
 pub struct FinalizedFeatureKey {
     /// The name of the feature.
-    pub name: Bytes,
+    pub name: StrBytes,
     /// The cluster-wide finalized max version level for the feature.
     pub max_version_level: i16,
     /// The cluster-wide finalized min version level for the feature.
@@ -134,7 +136,7 @@ impl FinalizedFeatureKey {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version >= 3 {
-            size += if version >= 3 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 3 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         if version >= 3 {
             size += 2;
@@ -148,7 +150,7 @@ impl FinalizedFeatureKey {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 3 {
-            if version >= 3 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 3 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         if version >= 3 {
             put_i16(buf, self.max_version_level);

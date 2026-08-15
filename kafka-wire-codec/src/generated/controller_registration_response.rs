@@ -1,8 +1,10 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 0-0.
 #[derive(Debug, Clone)]
@@ -12,7 +14,7 @@ pub struct ControllerRegistrationResponse {
     /// The response error code.
     pub error_code: i16,
     /// The response error message, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -22,7 +24,7 @@ impl Default for ControllerRegistrationResponse {
         Self {
             throttle_time_ms: 0,
             error_code: 0,
-            error_message: Some(Bytes::new()),
+            error_message: Some(StrBytes::new()),
             tagged_fields: Vec::new(),
         }
     }
@@ -46,7 +48,7 @@ impl ControllerRegistrationResponse {
             size += 2;
         }
         {
-            size += compact_nullable_string_size(self.error_message.as_deref());
+            size += compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str()));
         }
         size += tagged_fields_size(&self.tagged_fields);
         size
@@ -62,7 +64,7 @@ impl ControllerRegistrationResponse {
             put_i16(buf, self.error_code);
         }
         {
-            put_compact_nullable_string(buf, self.error_message.as_deref());
+            put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str()));
         }
         put_tagged_fields(buf, &self.tagged_fields);
     }

@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct DeleteShareGroupOffsetsRequestTopic {
     /// The topic name.
-    pub topic_name: Bytes,
+    pub topic_name: TopicName,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -16,7 +18,7 @@ impl DeleteShareGroupOffsetsRequestTopic {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.topic_name);
+            size += compact_string_size(self.topic_name.as_str());
         }
         size += tagged_fields_size(&self.tagged_fields);
         size
@@ -24,7 +26,7 @@ impl DeleteShareGroupOffsetsRequestTopic {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.topic_name);
+            put_compact_string(buf, self.topic_name.as_str());
         }
         put_tagged_fields(buf, &self.tagged_fields);
     }
@@ -32,7 +34,7 @@ impl DeleteShareGroupOffsetsRequestTopic {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = DeleteShareGroupOffsetsRequestTopic::default();
         {
-            msg.topic_name = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.topic_name = TopicName((get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         msg.tagged_fields = get_tagged_fields(buf)?;
         Ok(msg)
@@ -43,7 +45,7 @@ impl DeleteShareGroupOffsetsRequestTopic {
 #[derive(Debug, Clone, Default)]
 pub struct DeleteShareGroupOffsetsRequest {
     /// The group identifier.
-    pub group_id: Bytes,
+    pub group_id: GroupId,
     /// The topics to delete offsets for.
     pub topics: Vec<DeleteShareGroupOffsetsRequestTopic>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -62,7 +64,7 @@ impl DeleteShareGroupOffsetsRequest {
             "unsupported version {} for api key {}", version, Self::API_KEY);
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.group_id);
+            size += compact_string_size(self.group_id.as_str());
         }
         {
             { let arr = &self.topics;
@@ -80,7 +82,7 @@ impl DeleteShareGroupOffsetsRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            put_compact_string(buf, &self.group_id);
+            put_compact_string(buf, self.group_id.as_str());
         }
         {
             { let arr = &self.topics;
@@ -97,7 +99,7 @@ impl DeleteShareGroupOffsetsRequest {
         }
         let mut msg = DeleteShareGroupOffsetsRequest::default();
         {
-            msg.group_id = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.group_id = GroupId((get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };

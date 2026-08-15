@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct DescribeShareGroupOffsetsRequestGroup {
     /// The group identifier.
-    pub group_id: Bytes,
+    pub group_id: GroupId,
     /// The topics to describe offsets for, or null for all topic-partitions.
     pub topics: Option<Vec<DescribeShareGroupOffsetsRequestTopic>>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -17,7 +19,7 @@ pub struct DescribeShareGroupOffsetsRequestGroup {
 impl Default for DescribeShareGroupOffsetsRequestGroup {
     fn default() -> Self {
         Self {
-            group_id: Bytes::new(),
+            group_id: GroupId::default(),
             topics: Some(Vec::new()),
             tagged_fields: Vec::new(),
         }
@@ -28,7 +30,7 @@ impl DescribeShareGroupOffsetsRequestGroup {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.group_id);
+            size += compact_string_size(self.group_id.as_str());
         }
         {
             match &self.topics {
@@ -49,7 +51,7 @@ impl DescribeShareGroupOffsetsRequestGroup {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.group_id);
+            put_compact_string(buf, self.group_id.as_str());
         }
         {
             match &self.topics {
@@ -68,7 +70,7 @@ impl DescribeShareGroupOffsetsRequestGroup {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = DescribeShareGroupOffsetsRequestGroup::default();
         {
-            msg.group_id = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.group_id = GroupId((get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };
@@ -89,7 +91,7 @@ impl DescribeShareGroupOffsetsRequestGroup {
 #[derive(Debug, Clone, Default)]
 pub struct DescribeShareGroupOffsetsRequestTopic {
     /// The topic name.
-    pub topic_name: Bytes,
+    pub topic_name: TopicName,
     /// The partitions.
     pub partitions: Vec<i32>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -100,7 +102,7 @@ impl DescribeShareGroupOffsetsRequestTopic {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.topic_name);
+            size += compact_string_size(self.topic_name.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -114,7 +116,7 @@ impl DescribeShareGroupOffsetsRequestTopic {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.topic_name);
+            put_compact_string(buf, self.topic_name.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -128,7 +130,7 @@ impl DescribeShareGroupOffsetsRequestTopic {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = DescribeShareGroupOffsetsRequestTopic::default();
         {
-            msg.topic_name = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.topic_name = TopicName((get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };

@@ -1,19 +1,21 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct MetadataResponseBroker {
     /// The broker ID.
-    pub node_id: i32,
+    pub node_id: BrokerId,
     /// The broker hostname.
-    pub host: Bytes,
+    pub host: StrBytes,
     /// The broker port.
     pub port: i32,
     /// The rack of the broker, or null if it has not been assigned to a rack.
-    pub rack: Option<Bytes>,
+    pub rack: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -25,13 +27,13 @@ impl MetadataResponseBroker {
             size += 4;
         }
         {
-            size += if version >= 9 { compact_string_size(&self.host) } else { string_size(&self.host) };
+            size += if version >= 9 { compact_string_size(self.host.as_str()) } else { string_size(self.host.as_str()) };
         }
         {
             size += 4;
         }
         if version >= 1 {
-            size += if version >= 1 { if version >= 9 { compact_nullable_string_size(self.rack.as_deref()) } else { nullable_string_size(self.rack.as_deref()) } } else { let v = self.rack.as_deref().expect("field rack is None but not nullable at this version"); if version >= 9 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 1 { if version >= 9 { compact_nullable_string_size(self.rack.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.rack.as_ref().map(|v| v.as_str())) } } else { let v = self.rack.as_ref().expect("field rack is None but not nullable at this version"); if version >= 9 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         if version >= 9 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -39,16 +41,16 @@ impl MetadataResponseBroker {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_i32(buf, self.node_id);
+            put_i32(buf, self.node_id.0);
         }
         {
-            if version >= 9 { put_compact_string(buf, &self.host) } else { put_string(buf, &self.host) };
+            if version >= 9 { put_compact_string(buf, self.host.as_str()) } else { put_string(buf, self.host.as_str()) };
         }
         {
             put_i32(buf, self.port);
         }
         if version >= 1 {
-            if version >= 1 { if version >= 9 { put_compact_nullable_string(buf, self.rack.as_deref()) } else { put_nullable_string(buf, self.rack.as_deref()) } } else { let v = self.rack.as_deref().expect("field rack is None but not nullable at this version"); if version >= 9 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 1 { if version >= 9 { put_compact_nullable_string(buf, self.rack.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.rack.as_ref().map(|v| v.as_str())) } } else { let v = self.rack.as_ref().expect("field rack is None but not nullable at this version"); if version >= 9 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         if version >= 9 { put_tagged_fields(buf, &self.tagged_fields); }
     }
@@ -56,7 +58,7 @@ impl MetadataResponseBroker {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = MetadataResponseBroker::default();
         {
-            msg.node_id = get_i32(buf)?;
+            msg.node_id = BrokerId(get_i32(buf)?);
         }
         {
             msg.host = (if version >= 9 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
@@ -77,9 +79,9 @@ pub struct MetadataResponseTopic {
     /// The topic error, or 0 if there was no error.
     pub error_code: i16,
     /// The topic name. Null for non-existing topics queried by ID. This is never null when ErrorCode is zero. One of Name and TopicId is always populated.
-    pub name: Option<Bytes>,
+    pub name: Option<TopicName>,
     /// The topic id. Zero for non-existing topics queried by name. This is never zero when ErrorCode is zero. One of Name and TopicId is always populated.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// True if the topic is internal.
     pub is_internal: bool,
     /// Each partition in the topic.
@@ -94,8 +96,8 @@ impl Default for MetadataResponseTopic {
     fn default() -> Self {
         Self {
             error_code: 0,
-            name: Some(Bytes::new()),
-            topic_id: [0u8; 16],
+            name: Some(TopicName::default()),
+            topic_id: Uuid::nil(),
             is_internal: false,
             partitions: Vec::new(),
             topic_authorized_operations: -2147483648,
@@ -111,7 +113,7 @@ impl MetadataResponseTopic {
             size += 2;
         }
         {
-            size += if version >= 12 { if version >= 9 { compact_nullable_string_size(self.name.as_deref()) } else { nullable_string_size(self.name.as_deref()) } } else { let v = self.name.as_deref().expect("field name is None but not nullable at this version"); if version >= 9 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 12 { if version >= 9 { compact_nullable_string_size(self.name.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.name.as_ref().map(|v| v.as_str())) } } else { let v = self.name.as_ref().expect("field name is None but not nullable at this version"); if version >= 9 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         if version >= 10 {
             size += 16;
@@ -139,7 +141,7 @@ impl MetadataResponseTopic {
             put_i16(buf, self.error_code);
         }
         {
-            if version >= 12 { if version >= 9 { put_compact_nullable_string(buf, self.name.as_deref()) } else { put_nullable_string(buf, self.name.as_deref()) } } else { let v = self.name.as_deref().expect("field name is None but not nullable at this version"); if version >= 9 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 12 { if version >= 9 { put_compact_nullable_string(buf, self.name.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.name.as_ref().map(|v| v.as_str())) } } else { let v = self.name.as_ref().expect("field name is None but not nullable at this version"); if version >= 9 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         if version >= 10 {
             put_uuid(buf, &self.topic_id);
@@ -165,7 +167,7 @@ impl MetadataResponseTopic {
             msg.error_code = get_i16(buf)?;
         }
         {
-            msg.name = { let v = if version >= 9 { get_compact_string(buf)? } else { get_string(buf)? }; if version >= 12 { v } else { Some(v.ok_or(DecodeError::NullForNonNullable)?) } };
+            msg.name = { let v = if version >= 9 { get_compact_string(buf)? } else { get_string(buf)? }; if version >= 12 { v } else { Some(v.ok_or(DecodeError::NullForNonNullable)?) } }.map(TopicName);
         }
         if version >= 10 {
             msg.topic_id = get_uuid(buf)?;
@@ -195,15 +197,15 @@ pub struct MetadataResponsePartition {
     /// The partition index.
     pub partition_index: i32,
     /// The ID of the leader broker.
-    pub leader_id: i32,
+    pub leader_id: BrokerId,
     /// The leader epoch of this partition.
     pub leader_epoch: i32,
     /// The set of all nodes that host this partition.
-    pub replica_nodes: Vec<i32>,
+    pub replica_nodes: Vec<BrokerId>,
     /// The set of nodes that are in sync with the leader for this partition.
-    pub isr_nodes: Vec<i32>,
+    pub isr_nodes: Vec<BrokerId>,
     /// The set of offline replicas of this partition.
-    pub offline_replicas: Vec<i32>,
+    pub offline_replicas: Vec<BrokerId>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -213,7 +215,7 @@ impl Default for MetadataResponsePartition {
         Self {
             error_code: 0,
             partition_index: 0,
-            leader_id: 0,
+            leader_id: BrokerId::default(),
             leader_epoch: -1,
             replica_nodes: Vec::new(),
             isr_nodes: Vec::new(),
@@ -268,7 +270,7 @@ impl MetadataResponsePartition {
             put_i32(buf, self.partition_index);
         }
         {
-            put_i32(buf, self.leader_id);
+            put_i32(buf, self.leader_id.0);
         }
         if version >= 7 {
             put_i32(buf, self.leader_epoch);
@@ -276,19 +278,19 @@ impl MetadataResponsePartition {
         {
             { let arr = &self.replica_nodes;
                 if version >= 9 { put_uvarint(buf, arr.len() as u64 + 1); } else { put_i32(buf, arr.len() as i32); }
-                for item in arr { put_i32(buf, *item); }
+                for item in arr { put_i32(buf, item.0); }
             }
         }
         {
             { let arr = &self.isr_nodes;
                 if version >= 9 { put_uvarint(buf, arr.len() as u64 + 1); } else { put_i32(buf, arr.len() as i32); }
-                for item in arr { put_i32(buf, *item); }
+                for item in arr { put_i32(buf, item.0); }
             }
         }
         if version >= 5 {
             { let arr = &self.offline_replicas;
                 if version >= 9 { put_uvarint(buf, arr.len() as u64 + 1); } else { put_i32(buf, arr.len() as i32); }
-                for item in arr { put_i32(buf, *item); }
+                for item in arr { put_i32(buf, item.0); }
             }
         }
         if version >= 9 { put_tagged_fields(buf, &self.tagged_fields); }
@@ -303,7 +305,7 @@ impl MetadataResponsePartition {
             msg.partition_index = get_i32(buf)?;
         }
         {
-            msg.leader_id = get_i32(buf)?;
+            msg.leader_id = BrokerId(get_i32(buf)?);
         }
         if version >= 7 {
             msg.leader_epoch = get_i32(buf)?;
@@ -312,21 +314,21 @@ impl MetadataResponsePartition {
             let len_opt = if version >= 9 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };
             let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
             { let mut items = Vec::with_capacity(count.min(buf.len()));
-                for _ in 0..count { items.push(get_i32(buf)?); }
+                for _ in 0..count { items.push((get_i32(buf)).map(BrokerId)?); }
             msg.replica_nodes = items; }
         }
         {
             let len_opt = if version >= 9 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };
             let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
             { let mut items = Vec::with_capacity(count.min(buf.len()));
-                for _ in 0..count { items.push(get_i32(buf)?); }
+                for _ in 0..count { items.push((get_i32(buf)).map(BrokerId)?); }
             msg.isr_nodes = items; }
         }
         if version >= 5 {
             let len_opt = if version >= 9 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };
             let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
             { let mut items = Vec::with_capacity(count.min(buf.len()));
-                for _ in 0..count { items.push(get_i32(buf)?); }
+                for _ in 0..count { items.push((get_i32(buf)).map(BrokerId)?); }
             msg.offline_replicas = items; }
         }
         if version >= 9 { msg.tagged_fields = get_tagged_fields(buf)?; }
@@ -342,9 +344,9 @@ pub struct MetadataResponse {
     /// A list of brokers present in the cluster.
     pub brokers: Vec<MetadataResponseBroker>,
     /// The cluster ID that responding broker belongs to.
-    pub cluster_id: Option<Bytes>,
+    pub cluster_id: Option<StrBytes>,
     /// The ID of the controller broker.
-    pub controller_id: i32,
+    pub controller_id: BrokerId,
     /// Each topic in the response.
     pub topics: Vec<MetadataResponseTopic>,
     /// 32-bit bitfield to represent authorized operations for this cluster.
@@ -361,7 +363,7 @@ impl Default for MetadataResponse {
             throttle_time_ms: 0,
             brokers: Vec::new(),
             cluster_id: None,
-            controller_id: -1,
+            controller_id: BrokerId(-1),
             topics: Vec::new(),
             cluster_authorized_operations: -2147483648,
             error_code: 0,
@@ -393,7 +395,7 @@ impl MetadataResponse {
             }
         }
         if version >= 2 {
-            size += if version >= 2 { if version >= 9 { compact_nullable_string_size(self.cluster_id.as_deref()) } else { nullable_string_size(self.cluster_id.as_deref()) } } else { let v = self.cluster_id.as_deref().expect("field cluster_id is None but not nullable at this version"); if version >= 9 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 2 { if version >= 9 { compact_nullable_string_size(self.cluster_id.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.cluster_id.as_ref().map(|v| v.as_str())) } } else { let v = self.cluster_id.as_ref().expect("field cluster_id is None but not nullable at this version"); if version >= 9 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         if version >= 1 {
             size += 4;
@@ -429,10 +431,10 @@ impl MetadataResponse {
             }
         }
         if version >= 2 {
-            if version >= 2 { if version >= 9 { put_compact_nullable_string(buf, self.cluster_id.as_deref()) } else { put_nullable_string(buf, self.cluster_id.as_deref()) } } else { let v = self.cluster_id.as_deref().expect("field cluster_id is None but not nullable at this version"); if version >= 9 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 2 { if version >= 9 { put_compact_nullable_string(buf, self.cluster_id.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.cluster_id.as_ref().map(|v| v.as_str())) } } else { let v = self.cluster_id.as_ref().expect("field cluster_id is None but not nullable at this version"); if version >= 9 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         if version >= 1 {
-            put_i32(buf, self.controller_id);
+            put_i32(buf, self.controller_id.0);
         }
         {
             { let arr = &self.topics;
@@ -468,7 +470,7 @@ impl MetadataResponse {
             msg.cluster_id = { let v = if version >= 9 { get_compact_string(buf)? } else { get_string(buf)? }; if version >= 2 { v } else { Some(v.ok_or(DecodeError::NullForNonNullable)?) } };
         }
         if version >= 1 {
-            msg.controller_id = get_i32(buf)?;
+            msg.controller_id = BrokerId(get_i32(buf)?);
         }
         {
             let len_opt = if version >= 9 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };

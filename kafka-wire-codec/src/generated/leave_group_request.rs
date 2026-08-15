@@ -1,17 +1,19 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct MemberIdentity {
     /// The member ID to remove from the group.
-    pub member_id: Bytes,
+    pub member_id: StrBytes,
     /// The group instance ID to remove from the group.
-    pub group_instance_id: Option<Bytes>,
+    pub group_instance_id: Option<StrBytes>,
     /// The reason why the member left the group.
-    pub reason: Option<Bytes>,
+    pub reason: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -20,13 +22,13 @@ impl MemberIdentity {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version >= 3 {
-            size += if version >= 4 { compact_string_size(&self.member_id) } else { string_size(&self.member_id) };
+            size += if version >= 4 { compact_string_size(self.member_id.as_str()) } else { string_size(self.member_id.as_str()) };
         }
         if version >= 3 {
-            size += if version >= 3 { if version >= 4 { compact_nullable_string_size(self.group_instance_id.as_deref()) } else { nullable_string_size(self.group_instance_id.as_deref()) } } else { let v = self.group_instance_id.as_deref().expect("field group_instance_id is None but not nullable at this version"); if version >= 4 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 3 { if version >= 4 { compact_nullable_string_size(self.group_instance_id.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.group_instance_id.as_ref().map(|v| v.as_str())) } } else { let v = self.group_instance_id.as_ref().expect("field group_instance_id is None but not nullable at this version"); if version >= 4 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         if version >= 5 {
-            size += if version >= 5 { if version >= 4 { compact_nullable_string_size(self.reason.as_deref()) } else { nullable_string_size(self.reason.as_deref()) } } else { let v = self.reason.as_deref().expect("field reason is None but not nullable at this version"); if version >= 4 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 5 { if version >= 4 { compact_nullable_string_size(self.reason.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.reason.as_ref().map(|v| v.as_str())) } } else { let v = self.reason.as_ref().expect("field reason is None but not nullable at this version"); if version >= 4 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         if version >= 4 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -34,13 +36,13 @@ impl MemberIdentity {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 3 {
-            if version >= 4 { put_compact_string(buf, &self.member_id) } else { put_string(buf, &self.member_id) };
+            if version >= 4 { put_compact_string(buf, self.member_id.as_str()) } else { put_string(buf, self.member_id.as_str()) };
         }
         if version >= 3 {
-            if version >= 3 { if version >= 4 { put_compact_nullable_string(buf, self.group_instance_id.as_deref()) } else { put_nullable_string(buf, self.group_instance_id.as_deref()) } } else { let v = self.group_instance_id.as_deref().expect("field group_instance_id is None but not nullable at this version"); if version >= 4 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 3 { if version >= 4 { put_compact_nullable_string(buf, self.group_instance_id.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.group_instance_id.as_ref().map(|v| v.as_str())) } } else { let v = self.group_instance_id.as_ref().expect("field group_instance_id is None but not nullable at this version"); if version >= 4 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         if version >= 5 {
-            if version >= 5 { if version >= 4 { put_compact_nullable_string(buf, self.reason.as_deref()) } else { put_nullable_string(buf, self.reason.as_deref()) } } else { let v = self.reason.as_deref().expect("field reason is None but not nullable at this version"); if version >= 4 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 5 { if version >= 4 { put_compact_nullable_string(buf, self.reason.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.reason.as_ref().map(|v| v.as_str())) } } else { let v = self.reason.as_ref().expect("field reason is None but not nullable at this version"); if version >= 4 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         if version >= 4 { put_tagged_fields(buf, &self.tagged_fields); }
     }
@@ -65,9 +67,9 @@ impl MemberIdentity {
 #[derive(Debug, Clone, Default)]
 pub struct LeaveGroupRequest {
     /// The ID of the group to leave.
-    pub group_id: Bytes,
+    pub group_id: GroupId,
     /// The member ID to remove from the group.
-    pub member_id: Bytes,
+    pub member_id: StrBytes,
     /// List of leaving member identities.
     pub members: Vec<MemberIdentity>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -86,10 +88,10 @@ impl LeaveGroupRequest {
             "unsupported version {} for api key {}", version, Self::API_KEY);
         let mut size = 0usize;
         {
-            size += if version >= 4 { compact_string_size(&self.group_id) } else { string_size(&self.group_id) };
+            size += if version >= 4 { compact_string_size(self.group_id.as_str()) } else { string_size(self.group_id.as_str()) };
         }
         if version <= 2 {
-            size += if version >= 4 { compact_string_size(&self.member_id) } else { string_size(&self.member_id) };
+            size += if version >= 4 { compact_string_size(self.member_id.as_str()) } else { string_size(self.member_id.as_str()) };
         }
         if version >= 3 {
             { let arr = &self.members;
@@ -107,10 +109,10 @@ impl LeaveGroupRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            if version >= 4 { put_compact_string(buf, &self.group_id) } else { put_string(buf, &self.group_id) };
+            if version >= 4 { put_compact_string(buf, self.group_id.as_str()) } else { put_string(buf, self.group_id.as_str()) };
         }
         if version <= 2 {
-            if version >= 4 { put_compact_string(buf, &self.member_id) } else { put_string(buf, &self.member_id) };
+            if version >= 4 { put_compact_string(buf, self.member_id.as_str()) } else { put_string(buf, self.member_id.as_str()) };
         }
         if version >= 3 {
             { let arr = &self.members;
@@ -127,7 +129,7 @@ impl LeaveGroupRequest {
         }
         let mut msg = LeaveGroupRequest::default();
         {
-            msg.group_id = (if version >= 4 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.group_id = GroupId((if version >= 4 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         if version <= 2 {
             msg.member_id = (if version >= 4 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;

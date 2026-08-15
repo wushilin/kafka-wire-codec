@@ -1,19 +1,21 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct ListedGroup {
     /// The group ID.
-    pub group_id: Bytes,
+    pub group_id: GroupId,
     /// The group protocol type.
-    pub protocol_type: Bytes,
+    pub protocol_type: StrBytes,
     /// The group state name.
-    pub group_state: Bytes,
+    pub group_state: StrBytes,
     /// The group type name.
-    pub group_type: Bytes,
+    pub group_type: StrBytes,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -22,16 +24,16 @@ impl ListedGroup {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 3 { compact_string_size(&self.group_id) } else { string_size(&self.group_id) };
+            size += if version >= 3 { compact_string_size(self.group_id.as_str()) } else { string_size(self.group_id.as_str()) };
         }
         {
-            size += if version >= 3 { compact_string_size(&self.protocol_type) } else { string_size(&self.protocol_type) };
+            size += if version >= 3 { compact_string_size(self.protocol_type.as_str()) } else { string_size(self.protocol_type.as_str()) };
         }
         if version >= 4 {
-            size += if version >= 3 { compact_string_size(&self.group_state) } else { string_size(&self.group_state) };
+            size += if version >= 3 { compact_string_size(self.group_state.as_str()) } else { string_size(self.group_state.as_str()) };
         }
         if version >= 5 {
-            size += if version >= 3 { compact_string_size(&self.group_type) } else { string_size(&self.group_type) };
+            size += if version >= 3 { compact_string_size(self.group_type.as_str()) } else { string_size(self.group_type.as_str()) };
         }
         if version >= 3 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -39,16 +41,16 @@ impl ListedGroup {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 3 { put_compact_string(buf, &self.group_id) } else { put_string(buf, &self.group_id) };
+            if version >= 3 { put_compact_string(buf, self.group_id.as_str()) } else { put_string(buf, self.group_id.as_str()) };
         }
         {
-            if version >= 3 { put_compact_string(buf, &self.protocol_type) } else { put_string(buf, &self.protocol_type) };
+            if version >= 3 { put_compact_string(buf, self.protocol_type.as_str()) } else { put_string(buf, self.protocol_type.as_str()) };
         }
         if version >= 4 {
-            if version >= 3 { put_compact_string(buf, &self.group_state) } else { put_string(buf, &self.group_state) };
+            if version >= 3 { put_compact_string(buf, self.group_state.as_str()) } else { put_string(buf, self.group_state.as_str()) };
         }
         if version >= 5 {
-            if version >= 3 { put_compact_string(buf, &self.group_type) } else { put_string(buf, &self.group_type) };
+            if version >= 3 { put_compact_string(buf, self.group_type.as_str()) } else { put_string(buf, self.group_type.as_str()) };
         }
         if version >= 3 { put_tagged_fields(buf, &self.tagged_fields); }
     }
@@ -56,7 +58,7 @@ impl ListedGroup {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = ListedGroup::default();
         {
-            msg.group_id = (if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.group_id = GroupId((if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             msg.protocol_type = (if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;

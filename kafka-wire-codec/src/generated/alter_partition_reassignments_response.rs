@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct ReassignableTopicResponse {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The responses to partitions to reassign.
     pub partitions: Vec<ReassignablePartitionResponse>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl ReassignableTopicResponse {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.name);
+            size += compact_string_size(self.name.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -34,7 +36,7 @@ impl ReassignableTopicResponse {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.name);
+            put_compact_string(buf, self.name.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -48,7 +50,7 @@ impl ReassignableTopicResponse {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = ReassignableTopicResponse::default();
         {
-            msg.name = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };
@@ -69,7 +71,7 @@ pub struct ReassignablePartitionResponse {
     /// The error code for this partition, or 0 if there was no error.
     pub error_code: i16,
     /// The error message for this partition, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -79,7 +81,7 @@ impl Default for ReassignablePartitionResponse {
         Self {
             partition_index: 0,
             error_code: 0,
-            error_message: Some(Bytes::new()),
+            error_message: Some(StrBytes::new()),
             tagged_fields: Vec::new(),
         }
     }
@@ -95,7 +97,7 @@ impl ReassignablePartitionResponse {
             size += 2;
         }
         {
-            size += compact_nullable_string_size(self.error_message.as_deref());
+            size += compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str()));
         }
         size += tagged_fields_size(&self.tagged_fields);
         size
@@ -109,7 +111,7 @@ impl ReassignablePartitionResponse {
             put_i16(buf, self.error_code);
         }
         {
-            put_compact_nullable_string(buf, self.error_message.as_deref());
+            put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str()));
         }
         put_tagged_fields(buf, &self.tagged_fields);
     }
@@ -140,7 +142,7 @@ pub struct AlterPartitionReassignmentsResponse {
     /// The top-level error code, or 0 if there was no error.
     pub error_code: i16,
     /// The top-level error message, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// The responses to topics to reassign.
     pub responses: Vec<ReassignableTopicResponse>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -153,7 +155,7 @@ impl Default for AlterPartitionReassignmentsResponse {
             throttle_time_ms: 0,
             allow_replication_factor_change: true,
             error_code: 0,
-            error_message: Some(Bytes::new()),
+            error_message: Some(StrBytes::new()),
             responses: Vec::new(),
             tagged_fields: Vec::new(),
         }
@@ -181,7 +183,7 @@ impl AlterPartitionReassignmentsResponse {
             size += 2;
         }
         {
-            size += compact_nullable_string_size(self.error_message.as_deref());
+            size += compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str()));
         }
         {
             { let arr = &self.responses;
@@ -208,7 +210,7 @@ impl AlterPartitionReassignmentsResponse {
             put_i16(buf, self.error_code);
         }
         {
-            put_compact_nullable_string(buf, self.error_message.as_deref());
+            put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str()));
         }
         {
             { let arr = &self.responses;

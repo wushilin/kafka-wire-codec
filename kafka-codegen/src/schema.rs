@@ -25,6 +25,9 @@ pub struct FieldSpec {
     pub versions: String,
     #[serde(default)]
     pub nullable_versions: String,
+    /// Semantic entity annotation (e.g. "topicName", "brokerId") — mapped to a
+    /// typed newtype in the generated code.
+    pub entity_type: Option<String>,
     /// Tag number for flexible-version tagged fields. When present, the field
     /// lives in the trailing tagged-fields section, not inline. Kafka encodes
     /// this as a JSON string (e.g. "0"), so accept any JSON value — only its

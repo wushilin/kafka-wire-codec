@@ -1,19 +1,21 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct DescribedDelegationToken {
     /// The token principal type.
-    pub principal_type: Bytes,
+    pub principal_type: StrBytes,
     /// The token principal name.
-    pub principal_name: Bytes,
+    pub principal_name: StrBytes,
     /// The principal type of the requester of the token.
-    pub token_requester_principal_type: Bytes,
+    pub token_requester_principal_type: StrBytes,
     /// The principal type of the requester of the token.
-    pub token_requester_principal_name: Bytes,
+    pub token_requester_principal_name: StrBytes,
     /// The token issue timestamp in milliseconds.
     pub issue_timestamp: i64,
     /// The token expiry timestamp in milliseconds.
@@ -21,7 +23,7 @@ pub struct DescribedDelegationToken {
     /// The token maximum timestamp length in milliseconds.
     pub max_timestamp: i64,
     /// The token ID.
-    pub token_id: Bytes,
+    pub token_id: StrBytes,
     /// The token HMAC.
     pub hmac: Bytes,
     /// Those who are able to renew this token before it expires.
@@ -34,16 +36,16 @@ impl DescribedDelegationToken {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 2 { compact_string_size(&self.principal_type) } else { string_size(&self.principal_type) };
+            size += if version >= 2 { compact_string_size(self.principal_type.as_str()) } else { string_size(self.principal_type.as_str()) };
         }
         {
-            size += if version >= 2 { compact_string_size(&self.principal_name) } else { string_size(&self.principal_name) };
+            size += if version >= 2 { compact_string_size(self.principal_name.as_str()) } else { string_size(self.principal_name.as_str()) };
         }
         if version >= 3 {
-            size += if version >= 2 { compact_string_size(&self.token_requester_principal_type) } else { string_size(&self.token_requester_principal_type) };
+            size += if version >= 2 { compact_string_size(self.token_requester_principal_type.as_str()) } else { string_size(self.token_requester_principal_type.as_str()) };
         }
         if version >= 3 {
-            size += if version >= 2 { compact_string_size(&self.token_requester_principal_name) } else { string_size(&self.token_requester_principal_name) };
+            size += if version >= 2 { compact_string_size(self.token_requester_principal_name.as_str()) } else { string_size(self.token_requester_principal_name.as_str()) };
         }
         {
             size += 8;
@@ -55,7 +57,7 @@ impl DescribedDelegationToken {
             size += 8;
         }
         {
-            size += if version >= 2 { compact_string_size(&self.token_id) } else { string_size(&self.token_id) };
+            size += if version >= 2 { compact_string_size(self.token_id.as_str()) } else { string_size(self.token_id.as_str()) };
         }
         {
             size += if version >= 2 { compact_bytes_size(&self.hmac) } else { bytes_size(&self.hmac) };
@@ -74,16 +76,16 @@ impl DescribedDelegationToken {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 2 { put_compact_string(buf, &self.principal_type) } else { put_string(buf, &self.principal_type) };
+            if version >= 2 { put_compact_string(buf, self.principal_type.as_str()) } else { put_string(buf, self.principal_type.as_str()) };
         }
         {
-            if version >= 2 { put_compact_string(buf, &self.principal_name) } else { put_string(buf, &self.principal_name) };
+            if version >= 2 { put_compact_string(buf, self.principal_name.as_str()) } else { put_string(buf, self.principal_name.as_str()) };
         }
         if version >= 3 {
-            if version >= 2 { put_compact_string(buf, &self.token_requester_principal_type) } else { put_string(buf, &self.token_requester_principal_type) };
+            if version >= 2 { put_compact_string(buf, self.token_requester_principal_type.as_str()) } else { put_string(buf, self.token_requester_principal_type.as_str()) };
         }
         if version >= 3 {
-            if version >= 2 { put_compact_string(buf, &self.token_requester_principal_name) } else { put_string(buf, &self.token_requester_principal_name) };
+            if version >= 2 { put_compact_string(buf, self.token_requester_principal_name.as_str()) } else { put_string(buf, self.token_requester_principal_name.as_str()) };
         }
         {
             put_i64(buf, self.issue_timestamp);
@@ -95,7 +97,7 @@ impl DescribedDelegationToken {
             put_i64(buf, self.max_timestamp);
         }
         {
-            if version >= 2 { put_compact_string(buf, &self.token_id) } else { put_string(buf, &self.token_id) };
+            if version >= 2 { put_compact_string(buf, self.token_id.as_str()) } else { put_string(buf, self.token_id.as_str()) };
         }
         {
             if version >= 2 { put_compact_bytes_zc(buf, &self.hmac) } else { put_bytes_zc(buf, &self.hmac) };
@@ -153,9 +155,9 @@ impl DescribedDelegationToken {
 #[derive(Debug, Clone, Default)]
 pub struct DescribedDelegationTokenRenewer {
     /// The renewer principal type.
-    pub principal_type: Bytes,
+    pub principal_type: StrBytes,
     /// The renewer principal name.
-    pub principal_name: Bytes,
+    pub principal_name: StrBytes,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -164,10 +166,10 @@ impl DescribedDelegationTokenRenewer {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 2 { compact_string_size(&self.principal_type) } else { string_size(&self.principal_type) };
+            size += if version >= 2 { compact_string_size(self.principal_type.as_str()) } else { string_size(self.principal_type.as_str()) };
         }
         {
-            size += if version >= 2 { compact_string_size(&self.principal_name) } else { string_size(&self.principal_name) };
+            size += if version >= 2 { compact_string_size(self.principal_name.as_str()) } else { string_size(self.principal_name.as_str()) };
         }
         if version >= 2 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -175,10 +177,10 @@ impl DescribedDelegationTokenRenewer {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 2 { put_compact_string(buf, &self.principal_type) } else { put_string(buf, &self.principal_type) };
+            if version >= 2 { put_compact_string(buf, self.principal_type.as_str()) } else { put_string(buf, self.principal_type.as_str()) };
         }
         {
-            if version >= 2 { put_compact_string(buf, &self.principal_name) } else { put_string(buf, &self.principal_name) };
+            if version >= 2 { put_compact_string(buf, self.principal_name.as_str()) } else { put_string(buf, self.principal_name.as_str()) };
         }
         if version >= 2 { put_tagged_fields(buf, &self.tagged_fields); }
     }

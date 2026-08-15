@@ -223,6 +223,10 @@ fn main() -> Result<()> {
     )?;
     mod_entries.push("dispatch".to_string());
 
+    // Emit the typed RequestKind/ResponseKind dispatch enums.
+    fs::write(out_dir.join("kinds.rs"), generate_kinds(&dispatch_entries))?;
+    mod_entries.push("kinds".to_string());
+
     // Emit the API-key constants once per Kafka API.
     fs::write(
         out_dir.join("api_constants.rs"),
@@ -408,6 +412,139 @@ fn generate_dispatch(entries: &[(i16, bool, String, String, i16, i16, i16)]) -> 
     out.push_str("    }\n");
     out.push_str("    Ok(encoded.freeze())\n");
     out.push_str("}\n");
+
+    out
+}
+
+/// Emit `kinds.rs`: `RequestKind`/`ResponseKind` enums with one variant per
+/// generated RPC, so callers dispatch on a typed message instead of writing a
+/// 50+-arm `match api_key` by hand.
+fn generate_kinds(entries: &[(i16, bool, String, String, i16, i16, i16)]) -> String {
+    let mut out = String::new();
+    out.push_str("// Generated typed dispatch enums — do not edit.\n");
+    out.push_str("use bytes::{Bytes, BytesMut};\n");
+    out.push_str("use crate::codec::WireBuf;\n");
+    out.push_str("use crate::error::DecodeError;\n\n");
+
+    let mut sorted = entries.to_vec();
+    sorted.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
+
+    for is_request in [true, false] {
+        let kind = if is_request {
+            "RequestKind"
+        } else {
+            "ResponseKind"
+        };
+        let word = if is_request { "request" } else { "response" };
+        let rows: Vec<_> = sorted.iter().filter(|e| e.1 == is_request).collect();
+        let variant = |name: &str| -> String {
+            name.strip_suffix("Request")
+                .or_else(|| name.strip_suffix("Response"))
+                .unwrap_or(name)
+                .to_string()
+        };
+
+        out.push_str(&format!(
+            "/// Every Kafka {word}, as one typed enum: decode by api key, match by variant.\n"
+        ));
+        out.push_str("#[derive(Debug, Clone)]\n");
+        out.push_str(&format!("pub enum {} {{\n", kind));
+        for (_, _, module, name, _, _, _) in &rows {
+            out.push_str(&format!(
+                "    {}(super::{}::{}),\n",
+                variant(name),
+                module,
+                name
+            ));
+        }
+        out.push_str("}\n\n");
+
+        out.push_str(&format!("impl {} {{\n", kind));
+
+        out.push_str(&format!(
+            "    /// Decode the {word} body for `api_key` at `version`.\n"
+        ));
+        out.push_str(
+            "    /// Returns `DecodeError::UnknownApiKey` for api keys this build doesn't know.\n",
+        );
+        out.push_str("    pub fn decode(api_key: i16, version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {\n");
+        out.push_str("        match api_key {\n");
+        for (api_key, _, module, name, _, _, _) in &rows {
+            out.push_str(&format!(
+                "            {} => Ok(Self::{}(super::{}::{}::decode(version, buf)?)),\n",
+                api_key,
+                variant(name),
+                module,
+                name
+            ));
+        }
+        out.push_str("            _ => Err(DecodeError::UnknownApiKey(api_key)),\n");
+        out.push_str("        }\n    }\n\n");
+
+        out.push_str("    /// The Kafka API key of the contained message.\n");
+        out.push_str("    pub fn api_key(&self) -> i16 {\n");
+        out.push_str("        match self {\n");
+        for (api_key, _, _, name, _, _, _) in &rows {
+            out.push_str(&format!(
+                "            Self::{}(_) => {},\n",
+                variant(name),
+                api_key
+            ));
+        }
+        out.push_str("        }\n    }\n\n");
+
+        out.push_str("    /// The API name of the contained message (e.g. \"Produce\").\n");
+        out.push_str("    pub fn name(&self) -> &'static str {\n");
+        out.push_str("        match self {\n");
+        for (_, _, _, name, _, _, _) in &rows {
+            let v = variant(name);
+            out.push_str(&format!("            Self::{}(_) => \"{}\",\n", v, v));
+        }
+        out.push_str("        }\n    }\n\n");
+
+        out.push_str("    /// Exact encoded size at `version` (size-first encoding).\n");
+        out.push_str("    pub fn encoded_size(&self, version: i16) -> usize {\n");
+        out.push_str("        match self {\n");
+        for (_, _, _, name, _, _, _) in &rows {
+            out.push_str(&format!(
+                "            Self::{}(m) => m.encoded_size(version),\n",
+                variant(name)
+            ));
+        }
+        out.push_str("        }\n    }\n\n");
+
+        out.push_str("    /// Encode the contained message at `version`.\n");
+        out.push_str("    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {\n");
+        out.push_str("        match self {\n");
+        for (_, _, _, name, _, _, _) in &rows {
+            out.push_str(&format!(
+                "            Self::{}(m) => m.encode(version, buf),\n",
+                variant(name)
+            ));
+        }
+        out.push_str("        }\n    }\n\n");
+
+        out.push_str("    /// Size-first encode into a freshly allocated, exact-capacity buffer.\n");
+        out.push_str("    pub fn to_bytes(&self, version: i16) -> BytesMut {\n");
+        out.push_str(
+            "        let mut buf = BytesMut::with_capacity(self.encoded_size(version));\n",
+        );
+        out.push_str("        self.encode(version, &mut buf);\n");
+        out.push_str("        buf\n    }\n");
+        out.push_str("}\n\n");
+
+        for (_, _, module, name, _, _, _) in &rows {
+            out.push_str(&format!(
+                "impl From<super::{}::{}> for {} {{\n    fn from(m: super::{}::{}) -> Self {{\n        Self::{}(m)\n    }}\n}}\n\n",
+                module,
+                name,
+                kind,
+                module,
+                name,
+                variant(name)
+            ));
+        }
+    }
 
     out
 }

@@ -1,18 +1,20 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 0-6.
 #[derive(Debug, Clone, Default)]
 pub struct FindCoordinatorRequest {
     /// The coordinator key.
-    pub key: Bytes,
+    pub key: StrBytes,
     /// The coordinator key type. (group, transaction, share).
     pub key_type: i8,
     /// The coordinator keys.
-    pub coordinator_keys: Vec<Bytes>,
+    pub coordinator_keys: Vec<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -29,7 +31,7 @@ impl FindCoordinatorRequest {
             "unsupported version {} for api key {}", version, Self::API_KEY);
         let mut size = 0usize;
         if version <= 3 {
-            size += if version >= 3 { compact_string_size(&self.key) } else { string_size(&self.key) };
+            size += if version >= 3 { compact_string_size(self.key.as_str()) } else { string_size(self.key.as_str()) };
         }
         if version >= 1 {
             size += 1;
@@ -38,7 +40,7 @@ impl FindCoordinatorRequest {
             { let arr = &self.coordinator_keys;
                 if version >= 3 { size += uvarint_size(arr.len() as u64 + 1); } else { size += 4; }
                 for item in arr {
-                    size += if version >= 3 { compact_string_size(item) } else { string_size(item) };
+                    size += if version >= 3 { compact_string_size(item.as_str()) } else { string_size(item.as_str()) };
                 }
             }
         }
@@ -50,7 +52,7 @@ impl FindCoordinatorRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         if version <= 3 {
-            if version >= 3 { put_compact_string(buf, &self.key) } else { put_string(buf, &self.key) };
+            if version >= 3 { put_compact_string(buf, self.key.as_str()) } else { put_string(buf, self.key.as_str()) };
         }
         if version >= 1 {
             put_i8(buf, self.key_type);
@@ -58,7 +60,7 @@ impl FindCoordinatorRequest {
         if version >= 4 {
             { let arr = &self.coordinator_keys;
                 if version >= 3 { put_uvarint(buf, arr.len() as u64 + 1); } else { put_i32(buf, arr.len() as i32); }
-                for item in arr { if version >= 3 { put_compact_string(buf, item); } else { put_string(buf, item); } }
+                for item in arr { if version >= 3 { put_compact_string(buf, item.as_str()); } else { put_string(buf, item.as_str()); } }
             }
         }
         if version >= 3 { put_tagged_fields(buf, &self.tagged_fields); }

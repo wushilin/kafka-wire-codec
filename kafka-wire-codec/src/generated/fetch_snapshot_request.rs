@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct TopicSnapshot {
     /// The name of the topic to fetch.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The partitions to fetch.
     pub partitions: Vec<PartitionSnapshot>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl TopicSnapshot {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.name);
+            size += compact_string_size(self.name.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -34,7 +36,7 @@ impl TopicSnapshot {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.name);
+            put_compact_string(buf, self.name.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -48,7 +50,7 @@ impl TopicSnapshot {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = TopicSnapshot::default();
         {
-            msg.name = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };
@@ -180,7 +182,7 @@ impl SnapshotId {
 #[derive(Debug, Clone)]
 pub struct FetchSnapshotRequest {
     /// The broker ID of the follower.
-    pub replica_id: i32,
+    pub replica_id: BrokerId,
     /// The maximum bytes to fetch from all of the snapshots.
     pub max_bytes: i32,
     /// The topics to fetch.
@@ -192,7 +194,7 @@ pub struct FetchSnapshotRequest {
 impl Default for FetchSnapshotRequest {
     fn default() -> Self {
         Self {
-            replica_id: -1,
+            replica_id: BrokerId(-1),
             max_bytes: 0x7fffffff,
             topics: Vec::new(),
             tagged_fields: Vec::new(),
@@ -233,7 +235,7 @@ impl FetchSnapshotRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            put_i32(buf, self.replica_id);
+            put_i32(buf, self.replica_id.0);
         }
         {
             put_i32(buf, self.max_bytes);
@@ -253,7 +255,7 @@ impl FetchSnapshotRequest {
         }
         let mut msg = FetchSnapshotRequest::default();
         {
-            msg.replica_id = get_i32(buf)?;
+            msg.replica_id = BrokerId(get_i32(buf)?);
         }
         {
             msg.max_bytes = get_i32(buf)?;

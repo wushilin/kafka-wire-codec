@@ -1,17 +1,19 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct CurrentLeader {
     /// The replica id of the current leader or -1 if the leader is unknown.
-    pub leader_id: i32,
+    pub leader_id: BrokerId,
     /// The latest known leader epoch.
     pub leader_epoch: i32,
     /// The node's hostname.
-    pub host: Bytes,
+    pub host: StrBytes,
     /// The node's port.
     pub port: i32,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -21,9 +23,9 @@ pub struct CurrentLeader {
 impl Default for CurrentLeader {
     fn default() -> Self {
         Self {
-            leader_id: -1,
+            leader_id: BrokerId(-1),
             leader_epoch: -1,
-            host: Bytes::new(),
+            host: StrBytes::new(),
             port: 0,
             tagged_fields: Vec::new(),
         }
@@ -40,7 +42,7 @@ impl CurrentLeader {
             size += 4;
         }
         {
-            size += compact_string_size(&self.host);
+            size += compact_string_size(self.host.as_str());
         }
         {
             size += 4;
@@ -51,13 +53,13 @@ impl CurrentLeader {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_i32(buf, self.leader_id);
+            put_i32(buf, self.leader_id.0);
         }
         {
             put_i32(buf, self.leader_epoch);
         }
         {
-            put_compact_string(buf, &self.host);
+            put_compact_string(buf, self.host.as_str());
         }
         {
             put_i32(buf, self.port);
@@ -68,7 +70,7 @@ impl CurrentLeader {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = CurrentLeader::default();
         {
-            msg.leader_id = get_i32(buf)?;
+            msg.leader_id = BrokerId(get_i32(buf)?);
         }
         {
             msg.leader_epoch = get_i32(buf)?;

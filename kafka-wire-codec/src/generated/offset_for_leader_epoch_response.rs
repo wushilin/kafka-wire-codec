@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct OffsetForLeaderTopicResult {
     /// The topic name.
-    pub topic: Bytes,
+    pub topic: TopicName,
     /// Each partition in the topic we fetched offsets for.
     pub partitions: Vec<EpochEndOffset>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl OffsetForLeaderTopicResult {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 4 { compact_string_size(&self.topic) } else { string_size(&self.topic) };
+            size += if version >= 4 { compact_string_size(self.topic.as_str()) } else { string_size(self.topic.as_str()) };
         }
         {
             { let arr = &self.partitions;
@@ -34,7 +36,7 @@ impl OffsetForLeaderTopicResult {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 4 { put_compact_string(buf, &self.topic) } else { put_string(buf, &self.topic) };
+            if version >= 4 { put_compact_string(buf, self.topic.as_str()) } else { put_string(buf, self.topic.as_str()) };
         }
         {
             { let arr = &self.partitions;
@@ -48,7 +50,7 @@ impl OffsetForLeaderTopicResult {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = OffsetForLeaderTopicResult::default();
         {
-            msg.topic = (if version >= 4 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.topic = TopicName((if version >= 4 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = if version >= 4 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };

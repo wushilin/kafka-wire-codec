@@ -1,15 +1,17 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct FetchableTopicResponse {
     /// The topic name.
-    pub topic: Bytes,
+    pub topic: TopicName,
     /// The unique topic ID.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// The topic partitions.
     pub partitions: Vec<PartitionData>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -20,7 +22,7 @@ impl FetchableTopicResponse {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version <= 12 {
-            size += if version >= 12 { compact_string_size(&self.topic) } else { string_size(&self.topic) };
+            size += if version >= 12 { compact_string_size(self.topic.as_str()) } else { string_size(self.topic.as_str()) };
         }
         if version >= 13 {
             size += 16;
@@ -39,7 +41,7 @@ impl FetchableTopicResponse {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version <= 12 {
-            if version >= 12 { put_compact_string(buf, &self.topic) } else { put_string(buf, &self.topic) };
+            if version >= 12 { put_compact_string(buf, self.topic.as_str()) } else { put_string(buf, self.topic.as_str()) };
         }
         if version >= 13 {
             put_uuid(buf, &self.topic_id);
@@ -56,7 +58,7 @@ impl FetchableTopicResponse {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = FetchableTopicResponse::default();
         if version <= 12 {
-            msg.topic = (if version >= 12 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.topic = TopicName((if version >= 12 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         if version >= 13 {
             msg.topic_id = get_uuid(buf)?;
@@ -88,7 +90,7 @@ pub struct PartitionData {
     /// The aborted transactions.
     pub aborted_transactions: Option<Vec<AbortedTransaction>>,
     /// The preferred read replica for the consumer to use on its next fetch request.
-    pub preferred_read_replica: i32,
+    pub preferred_read_replica: BrokerId,
     /// The record data.
     pub records: Option<Bytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -104,7 +106,7 @@ impl Default for PartitionData {
             last_stable_offset: -1,
             log_start_offset: -1,
             aborted_transactions: Some(Vec::new()),
-            preferred_read_replica: -1,
+            preferred_read_replica: BrokerId(-1),
             records: Some(Bytes::new()),
             tagged_fields: Vec::new(),
         }
@@ -182,7 +184,7 @@ impl PartitionData {
             }
         }
         if version >= 11 {
-            put_i32(buf, self.preferred_read_replica);
+            put_i32(buf, self.preferred_read_replica.0);
         }
         {
             if version >= 12 { put_compact_nullable_bytes_zc(buf, self.records.as_ref()) } else { put_nullable_bytes_zc(buf, self.records.as_ref()) };
@@ -219,7 +221,7 @@ impl PartitionData {
             };
         }
         if version >= 11 {
-            msg.preferred_read_replica = get_i32(buf)?;
+            msg.preferred_read_replica = BrokerId(get_i32(buf)?);
         }
         {
             msg.records = if version >= 12 { get_compact_bytes(buf)? } else { get_bytes(buf)? };
@@ -288,7 +290,7 @@ impl EpochEndOffset {
 #[derive(Debug, Clone)]
 pub struct LeaderIdAndEpoch {
     /// The ID of the current leader or -1 if the leader is unknown.
-    pub leader_id: i32,
+    pub leader_id: BrokerId,
     /// The latest known leader epoch.
     pub leader_epoch: i32,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -298,7 +300,7 @@ pub struct LeaderIdAndEpoch {
 impl Default for LeaderIdAndEpoch {
     fn default() -> Self {
         Self {
-            leader_id: -1,
+            leader_id: BrokerId(-1),
             leader_epoch: -1,
             tagged_fields: Vec::new(),
         }
@@ -320,7 +322,7 @@ impl LeaderIdAndEpoch {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 12 {
-            put_i32(buf, self.leader_id);
+            put_i32(buf, self.leader_id.0);
         }
         if version >= 12 {
             put_i32(buf, self.leader_epoch);
@@ -331,7 +333,7 @@ impl LeaderIdAndEpoch {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = LeaderIdAndEpoch::default();
         if version >= 12 {
-            msg.leader_id = get_i32(buf)?;
+            msg.leader_id = BrokerId(get_i32(buf)?);
         }
         if version >= 12 {
             msg.leader_epoch = get_i32(buf)?;
@@ -400,7 +402,7 @@ impl SnapshotId {
 #[derive(Debug, Clone, Default)]
 pub struct AbortedTransaction {
     /// The producer id associated with the aborted transaction.
-    pub producer_id: i64,
+    pub producer_id: ProducerId,
     /// The first offset in the aborted transaction.
     pub first_offset: i64,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -422,7 +424,7 @@ impl AbortedTransaction {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 4 {
-            put_i64(buf, self.producer_id);
+            put_i64(buf, self.producer_id.0);
         }
         if version >= 4 {
             put_i64(buf, self.first_offset);
@@ -433,7 +435,7 @@ impl AbortedTransaction {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = AbortedTransaction::default();
         if version >= 4 {
-            msg.producer_id = get_i64(buf)?;
+            msg.producer_id = ProducerId(get_i64(buf)?);
         }
         if version >= 4 {
             msg.first_offset = get_i64(buf)?;
@@ -446,13 +448,13 @@ impl AbortedTransaction {
 #[derive(Debug, Clone, Default)]
 pub struct NodeEndpoint {
     /// The ID of the associated node.
-    pub node_id: i32,
+    pub node_id: BrokerId,
     /// The node's hostname.
-    pub host: Bytes,
+    pub host: StrBytes,
     /// The node's port.
     pub port: i32,
     /// The rack of the node, or null if it has not been assigned to a rack.
-    pub rack: Option<Bytes>,
+    pub rack: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -464,13 +466,13 @@ impl NodeEndpoint {
             size += 4;
         }
         if version >= 16 {
-            size += if version >= 12 { compact_string_size(&self.host) } else { string_size(&self.host) };
+            size += if version >= 12 { compact_string_size(self.host.as_str()) } else { string_size(self.host.as_str()) };
         }
         if version >= 16 {
             size += 4;
         }
         if version >= 16 {
-            size += if version >= 16 { if version >= 12 { compact_nullable_string_size(self.rack.as_deref()) } else { nullable_string_size(self.rack.as_deref()) } } else { let v = self.rack.as_deref().expect("field rack is None but not nullable at this version"); if version >= 12 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 16 { if version >= 12 { compact_nullable_string_size(self.rack.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.rack.as_ref().map(|v| v.as_str())) } } else { let v = self.rack.as_ref().expect("field rack is None but not nullable at this version"); if version >= 12 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         if version >= 12 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -478,16 +480,16 @@ impl NodeEndpoint {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 16 {
-            put_i32(buf, self.node_id);
+            put_i32(buf, self.node_id.0);
         }
         if version >= 16 {
-            if version >= 12 { put_compact_string(buf, &self.host) } else { put_string(buf, &self.host) };
+            if version >= 12 { put_compact_string(buf, self.host.as_str()) } else { put_string(buf, self.host.as_str()) };
         }
         if version >= 16 {
             put_i32(buf, self.port);
         }
         if version >= 16 {
-            if version >= 16 { if version >= 12 { put_compact_nullable_string(buf, self.rack.as_deref()) } else { put_nullable_string(buf, self.rack.as_deref()) } } else { let v = self.rack.as_deref().expect("field rack is None but not nullable at this version"); if version >= 12 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 16 { if version >= 12 { put_compact_nullable_string(buf, self.rack.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.rack.as_ref().map(|v| v.as_str())) } } else { let v = self.rack.as_ref().expect("field rack is None but not nullable at this version"); if version >= 12 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         if version >= 12 { put_tagged_fields(buf, &self.tagged_fields); }
     }
@@ -495,7 +497,7 @@ impl NodeEndpoint {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = NodeEndpoint::default();
         if version >= 16 {
-            msg.node_id = get_i32(buf)?;
+            msg.node_id = BrokerId(get_i32(buf)?);
         }
         if version >= 16 {
             msg.host = (if version >= 12 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;

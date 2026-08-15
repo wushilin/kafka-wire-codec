@@ -1,8 +1,10 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Retired API (validVersions: "none"): kept for the api-key namespace; no version can be encoded or decoded.
 #[derive(Debug, Clone, Default)]

@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct TopicData {
     /// The ID of the topic to alter ISRs for.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// The partitions to alter ISRs for.
     pub partitions: Vec<PartitionData>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -69,7 +71,7 @@ pub struct PartitionData {
     /// The leader epoch of this partition.
     pub leader_epoch: i32,
     /// The ISR for this partition. Deprecated since version 3.
-    pub new_isr: Vec<i32>,
+    pub new_isr: Vec<BrokerId>,
     /// The ISR for this partition.
     pub new_isr_with_epochs: Vec<BrokerState>,
     /// 1 if the partition is recovering from an unclean leader election; 0 otherwise.
@@ -123,7 +125,7 @@ impl PartitionData {
         if version <= 2 {
             { let arr = &self.new_isr;
                 put_uvarint(buf, arr.len() as u64 + 1);
-                for item in arr { put_i32(buf, *item); }
+                for item in arr { put_i32(buf, item.0); }
             }
         }
         if version >= 3 {
@@ -153,7 +155,7 @@ impl PartitionData {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };
             let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
             { let mut items = Vec::with_capacity(count.min(buf.len()));
-                for _ in 0..count { items.push(get_i32(buf)?); }
+                for _ in 0..count { items.push((get_i32(buf)).map(BrokerId)?); }
             msg.new_isr = items; }
         }
         if version >= 3 {
@@ -177,7 +179,7 @@ impl PartitionData {
 #[derive(Debug, Clone)]
 pub struct BrokerState {
     /// The ID of the broker.
-    pub broker_id: i32,
+    pub broker_id: BrokerId,
     /// The epoch of the broker. It will be -1 if the epoch check is not supported.
     pub broker_epoch: i64,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -187,7 +189,7 @@ pub struct BrokerState {
 impl Default for BrokerState {
     fn default() -> Self {
         Self {
-            broker_id: 0,
+            broker_id: BrokerId::default(),
             broker_epoch: -1,
             tagged_fields: Vec::new(),
         }
@@ -209,7 +211,7 @@ impl BrokerState {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 3 {
-            put_i32(buf, self.broker_id);
+            put_i32(buf, self.broker_id.0);
         }
         if version >= 3 {
             put_i64(buf, self.broker_epoch);
@@ -220,7 +222,7 @@ impl BrokerState {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = BrokerState::default();
         if version >= 3 {
-            msg.broker_id = get_i32(buf)?;
+            msg.broker_id = BrokerId(get_i32(buf)?);
         }
         if version >= 3 {
             msg.broker_epoch = get_i64(buf)?;
@@ -234,7 +236,7 @@ impl BrokerState {
 #[derive(Debug, Clone)]
 pub struct AlterPartitionRequest {
     /// The ID of the requesting broker.
-    pub broker_id: i32,
+    pub broker_id: BrokerId,
     /// The epoch of the requesting broker.
     pub broker_epoch: i64,
     /// The topics to alter ISRs for.
@@ -246,7 +248,7 @@ pub struct AlterPartitionRequest {
 impl Default for AlterPartitionRequest {
     fn default() -> Self {
         Self {
-            broker_id: 0,
+            broker_id: BrokerId::default(),
             broker_epoch: -1,
             topics: Vec::new(),
             tagged_fields: Vec::new(),
@@ -287,7 +289,7 @@ impl AlterPartitionRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            put_i32(buf, self.broker_id);
+            put_i32(buf, self.broker_id.0);
         }
         {
             put_i64(buf, self.broker_epoch);
@@ -307,7 +309,7 @@ impl AlterPartitionRequest {
         }
         let mut msg = AlterPartitionRequest::default();
         {
-            msg.broker_id = get_i32(buf)?;
+            msg.broker_id = BrokerId(get_i32(buf)?);
         }
         {
             msg.broker_epoch = get_i64(buf)?;

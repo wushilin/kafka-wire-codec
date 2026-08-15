@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct ReadStateSummaryResult {
     /// The topic identifier.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// The results for the partitions.
     pub partitions: Vec<PartitionResult>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -69,7 +71,7 @@ pub struct PartitionResult {
     /// The error code, or 0 if there was no error.
     pub error_code: i16,
     /// The error message, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// The state epoch of the share-partition.
     pub state_epoch: i32,
     /// The leader epoch of the share-partition.
@@ -107,7 +109,7 @@ impl PartitionResult {
             size += 2;
         }
         {
-            size += compact_nullable_string_size(self.error_message.as_deref());
+            size += compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str()));
         }
         {
             size += 4;
@@ -133,7 +135,7 @@ impl PartitionResult {
             put_i16(buf, self.error_code);
         }
         {
-            put_compact_nullable_string(buf, self.error_message.as_deref());
+            put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str()));
         }
         {
             put_i32(buf, self.state_epoch);

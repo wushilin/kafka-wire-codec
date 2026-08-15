@@ -1,15 +1,17 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct DeleteAclsFilterResult {
     /// The error code, or 0 if the filter succeeded.
     pub error_code: i16,
     /// The error message, or null if the filter succeeded.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// The ACLs which matched this filter.
     pub matching_acls: Vec<DeleteAclsMatchingAcl>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -20,7 +22,7 @@ impl Default for DeleteAclsFilterResult {
     fn default() -> Self {
         Self {
             error_code: 0,
-            error_message: Some(Bytes::new()),
+            error_message: Some(StrBytes::new()),
             matching_acls: Vec::new(),
             tagged_fields: Vec::new(),
         }
@@ -34,7 +36,7 @@ impl DeleteAclsFilterResult {
             size += 2;
         }
         {
-            size += if version >= 2 { compact_nullable_string_size(self.error_message.as_deref()) } else { nullable_string_size(self.error_message.as_deref()) };
+            size += if version >= 2 { compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) };
         }
         {
             { let arr = &self.matching_acls;
@@ -53,7 +55,7 @@ impl DeleteAclsFilterResult {
             put_i16(buf, self.error_code);
         }
         {
-            if version >= 2 { put_compact_nullable_string(buf, self.error_message.as_deref()) } else { put_nullable_string(buf, self.error_message.as_deref()) };
+            if version >= 2 { put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) };
         }
         {
             { let arr = &self.matching_acls;
@@ -89,17 +91,17 @@ pub struct DeleteAclsMatchingAcl {
     /// The deletion error code, or 0 if the deletion succeeded.
     pub error_code: i16,
     /// The deletion error message, or null if the deletion succeeded.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// The ACL resource type.
     pub resource_type: i8,
     /// The ACL resource name.
-    pub resource_name: Bytes,
+    pub resource_name: StrBytes,
     /// The ACL resource pattern type.
     pub pattern_type: i8,
     /// The ACL principal.
-    pub principal: Bytes,
+    pub principal: StrBytes,
     /// The ACL host.
-    pub host: Bytes,
+    pub host: StrBytes,
     /// The ACL operation.
     pub operation: i8,
     /// The ACL permission type.
@@ -112,12 +114,12 @@ impl Default for DeleteAclsMatchingAcl {
     fn default() -> Self {
         Self {
             error_code: 0,
-            error_message: Some(Bytes::new()),
+            error_message: Some(StrBytes::new()),
             resource_type: 0,
-            resource_name: Bytes::new(),
+            resource_name: StrBytes::new(),
             pattern_type: 3,
-            principal: Bytes::new(),
-            host: Bytes::new(),
+            principal: StrBytes::new(),
+            host: StrBytes::new(),
             operation: 0,
             permission_type: 0,
             tagged_fields: Vec::new(),
@@ -132,22 +134,22 @@ impl DeleteAclsMatchingAcl {
             size += 2;
         }
         {
-            size += if version >= 2 { compact_nullable_string_size(self.error_message.as_deref()) } else { nullable_string_size(self.error_message.as_deref()) };
+            size += if version >= 2 { compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) };
         }
         {
             size += 1;
         }
         {
-            size += if version >= 2 { compact_string_size(&self.resource_name) } else { string_size(&self.resource_name) };
+            size += if version >= 2 { compact_string_size(self.resource_name.as_str()) } else { string_size(self.resource_name.as_str()) };
         }
         if version >= 1 {
             size += 1;
         }
         {
-            size += if version >= 2 { compact_string_size(&self.principal) } else { string_size(&self.principal) };
+            size += if version >= 2 { compact_string_size(self.principal.as_str()) } else { string_size(self.principal.as_str()) };
         }
         {
-            size += if version >= 2 { compact_string_size(&self.host) } else { string_size(&self.host) };
+            size += if version >= 2 { compact_string_size(self.host.as_str()) } else { string_size(self.host.as_str()) };
         }
         {
             size += 1;
@@ -164,22 +166,22 @@ impl DeleteAclsMatchingAcl {
             put_i16(buf, self.error_code);
         }
         {
-            if version >= 2 { put_compact_nullable_string(buf, self.error_message.as_deref()) } else { put_nullable_string(buf, self.error_message.as_deref()) };
+            if version >= 2 { put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) };
         }
         {
             put_i8(buf, self.resource_type);
         }
         {
-            if version >= 2 { put_compact_string(buf, &self.resource_name) } else { put_string(buf, &self.resource_name) };
+            if version >= 2 { put_compact_string(buf, self.resource_name.as_str()) } else { put_string(buf, self.resource_name.as_str()) };
         }
         if version >= 1 {
             put_i8(buf, self.pattern_type);
         }
         {
-            if version >= 2 { put_compact_string(buf, &self.principal) } else { put_string(buf, &self.principal) };
+            if version >= 2 { put_compact_string(buf, self.principal.as_str()) } else { put_string(buf, self.principal.as_str()) };
         }
         {
-            if version >= 2 { put_compact_string(buf, &self.host) } else { put_string(buf, &self.host) };
+            if version >= 2 { put_compact_string(buf, self.host.as_str()) } else { put_string(buf, self.host.as_str()) };
         }
         {
             put_i8(buf, self.operation);

@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct TopicData {
     /// The topic name.
-    pub topic_name: Bytes,
+    pub topic_name: TopicName,
     /// The partitions.
     pub partitions: Vec<PartitionData>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl TopicData {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 1 { compact_string_size(&self.topic_name) } else { string_size(&self.topic_name) };
+            size += if version >= 1 { compact_string_size(self.topic_name.as_str()) } else { string_size(self.topic_name.as_str()) };
         }
         {
             { let arr = &self.partitions;
@@ -34,7 +36,7 @@ impl TopicData {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 1 { put_compact_string(buf, &self.topic_name) } else { put_string(buf, &self.topic_name) };
+            if version >= 1 { put_compact_string(buf, self.topic_name.as_str()) } else { put_string(buf, self.topic_name.as_str()) };
         }
         {
             { let arr = &self.partitions;
@@ -48,7 +50,7 @@ impl TopicData {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = TopicData::default();
         {
-            msg.topic_name = (if version >= 1 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.topic_name = TopicName((if version >= 1 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = if version >= 1 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };
@@ -67,9 +69,9 @@ pub struct PartitionData {
     /// The partition index.
     pub partition_index: i32,
     /// The directory id of the receiving replica.
-    pub voter_directory_id: [u8; 16],
+    pub voter_directory_id: Uuid,
     /// The ID of the newly elected leader.
-    pub leader_id: i32,
+    pub leader_id: BrokerId,
     /// The epoch of the newly elected leader.
     pub leader_epoch: i32,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -103,7 +105,7 @@ impl PartitionData {
             put_uuid(buf, &self.voter_directory_id);
         }
         {
-            put_i32(buf, self.leader_id);
+            put_i32(buf, self.leader_id.0);
         }
         {
             put_i32(buf, self.leader_epoch);
@@ -120,7 +122,7 @@ impl PartitionData {
             msg.voter_directory_id = get_uuid(buf)?;
         }
         {
-            msg.leader_id = get_i32(buf)?;
+            msg.leader_id = BrokerId(get_i32(buf)?);
         }
         {
             msg.leader_epoch = get_i32(buf)?;
@@ -133,9 +135,9 @@ impl PartitionData {
 #[derive(Debug, Clone, Default)]
 pub struct LeaderEndpoint {
     /// The name of the endpoint.
-    pub name: Bytes,
+    pub name: StrBytes,
     /// The node's hostname.
-    pub host: Bytes,
+    pub host: StrBytes,
     /// The node's port.
     pub port: u16,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -146,10 +148,10 @@ impl LeaderEndpoint {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version >= 1 {
-            size += if version >= 1 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 1 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         if version >= 1 {
-            size += if version >= 1 { compact_string_size(&self.host) } else { string_size(&self.host) };
+            size += if version >= 1 { compact_string_size(self.host.as_str()) } else { string_size(self.host.as_str()) };
         }
         if version >= 1 {
             size += 2;
@@ -160,10 +162,10 @@ impl LeaderEndpoint {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 1 {
-            if version >= 1 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 1 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         if version >= 1 {
-            if version >= 1 { put_compact_string(buf, &self.host) } else { put_string(buf, &self.host) };
+            if version >= 1 { put_compact_string(buf, self.host.as_str()) } else { put_string(buf, self.host.as_str()) };
         }
         if version >= 1 {
             put_u16(buf, self.port);
@@ -191,9 +193,9 @@ impl LeaderEndpoint {
 #[derive(Debug, Clone)]
 pub struct BeginQuorumEpochRequest {
     /// The cluster id.
-    pub cluster_id: Option<Bytes>,
+    pub cluster_id: Option<StrBytes>,
     /// The replica id of the voter receiving the request.
-    pub voter_id: i32,
+    pub voter_id: BrokerId,
     /// The topics.
     pub topics: Vec<TopicData>,
     /// Endpoints for the leader.
@@ -206,7 +208,7 @@ impl Default for BeginQuorumEpochRequest {
     fn default() -> Self {
         Self {
             cluster_id: None,
-            voter_id: -1,
+            voter_id: BrokerId(-1),
             topics: Vec::new(),
             leader_endpoints: Vec::new(),
             tagged_fields: Vec::new(),
@@ -226,7 +228,7 @@ impl BeginQuorumEpochRequest {
             "unsupported version {} for api key {}", version, Self::API_KEY);
         let mut size = 0usize;
         {
-            size += if version >= 1 { compact_nullable_string_size(self.cluster_id.as_deref()) } else { nullable_string_size(self.cluster_id.as_deref()) };
+            size += if version >= 1 { compact_nullable_string_size(self.cluster_id.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.cluster_id.as_ref().map(|v| v.as_str())) };
         }
         if version >= 1 {
             size += 4;
@@ -255,10 +257,10 @@ impl BeginQuorumEpochRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            if version >= 1 { put_compact_nullable_string(buf, self.cluster_id.as_deref()) } else { put_nullable_string(buf, self.cluster_id.as_deref()) };
+            if version >= 1 { put_compact_nullable_string(buf, self.cluster_id.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.cluster_id.as_ref().map(|v| v.as_str())) };
         }
         if version >= 1 {
-            put_i32(buf, self.voter_id);
+            put_i32(buf, self.voter_id.0);
         }
         {
             { let arr = &self.topics;
@@ -284,7 +286,7 @@ impl BeginQuorumEpochRequest {
             msg.cluster_id = if version >= 1 { get_compact_string(buf)? } else { get_string(buf)? };
         }
         if version >= 1 {
-            msg.voter_id = get_i32(buf)?;
+            msg.voter_id = BrokerId(get_i32(buf)?);
         }
         {
             let len_opt = if version >= 1 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };

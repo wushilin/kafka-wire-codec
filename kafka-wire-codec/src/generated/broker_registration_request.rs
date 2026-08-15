@@ -1,15 +1,17 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct Listener {
     /// The name of the endpoint.
-    pub name: Bytes,
+    pub name: StrBytes,
     /// The hostname.
-    pub host: Bytes,
+    pub host: StrBytes,
     /// The port.
     pub port: u16,
     /// The security protocol.
@@ -22,10 +24,10 @@ impl Listener {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.name);
+            size += compact_string_size(self.name.as_str());
         }
         {
-            size += compact_string_size(&self.host);
+            size += compact_string_size(self.host.as_str());
         }
         {
             size += 2;
@@ -39,10 +41,10 @@ impl Listener {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.name);
+            put_compact_string(buf, self.name.as_str());
         }
         {
-            put_compact_string(buf, &self.host);
+            put_compact_string(buf, self.host.as_str());
         }
         {
             put_u16(buf, self.port);
@@ -75,7 +77,7 @@ impl Listener {
 #[derive(Debug, Clone, Default)]
 pub struct Feature {
     /// The feature name.
-    pub name: Bytes,
+    pub name: StrBytes,
     /// The minimum supported feature level.
     pub min_supported_version: i16,
     /// The maximum supported feature level.
@@ -88,7 +90,7 @@ impl Feature {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.name);
+            size += compact_string_size(self.name.as_str());
         }
         {
             size += 2;
@@ -102,7 +104,7 @@ impl Feature {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.name);
+            put_compact_string(buf, self.name.as_str());
         }
         {
             put_i16(buf, self.min_supported_version);
@@ -133,21 +135,21 @@ impl Feature {
 #[derive(Debug, Clone)]
 pub struct BrokerRegistrationRequest {
     /// The broker ID.
-    pub broker_id: i32,
+    pub broker_id: BrokerId,
     /// The cluster id of the broker process.
-    pub cluster_id: Bytes,
+    pub cluster_id: StrBytes,
     /// The incarnation id of the broker process.
-    pub incarnation_id: [u8; 16],
+    pub incarnation_id: Uuid,
     /// The listeners of this broker.
     pub listeners: Vec<Listener>,
     /// The features on this broker. Note: in v0-v3, features with MinSupportedVersion = 0 are omitted.
     pub features: Vec<Feature>,
     /// The rack which this broker is in.
-    pub rack: Option<Bytes>,
+    pub rack: Option<StrBytes>,
     /// If the required configurations for ZK migration are present, this value is set to true.
     pub is_migrating_zk_broker: bool,
     /// Log directories configured in this broker which are available.
-    pub log_dirs: Vec<[u8; 16]>,
+    pub log_dirs: Vec<Uuid>,
     /// The epoch before a clean shutdown.
     pub previous_broker_epoch: i64,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -157,12 +159,12 @@ pub struct BrokerRegistrationRequest {
 impl Default for BrokerRegistrationRequest {
     fn default() -> Self {
         Self {
-            broker_id: 0,
-            cluster_id: Bytes::new(),
-            incarnation_id: [0u8; 16],
+            broker_id: BrokerId::default(),
+            cluster_id: StrBytes::new(),
+            incarnation_id: Uuid::nil(),
             listeners: Vec::new(),
             features: Vec::new(),
-            rack: Some(Bytes::new()),
+            rack: Some(StrBytes::new()),
             is_migrating_zk_broker: false,
             log_dirs: Vec::new(),
             previous_broker_epoch: -1,
@@ -186,7 +188,7 @@ impl BrokerRegistrationRequest {
             size += 4;
         }
         {
-            size += compact_string_size(&self.cluster_id);
+            size += compact_string_size(self.cluster_id.as_str());
         }
         {
             size += 16;
@@ -208,7 +210,7 @@ impl BrokerRegistrationRequest {
             }
         }
         {
-            size += compact_nullable_string_size(self.rack.as_deref());
+            size += compact_nullable_string_size(self.rack.as_ref().map(|v| v.as_str()));
         }
         if version >= 1 {
             size += 1;
@@ -230,10 +232,10 @@ impl BrokerRegistrationRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            put_i32(buf, self.broker_id);
+            put_i32(buf, self.broker_id.0);
         }
         {
-            put_compact_string(buf, &self.cluster_id);
+            put_compact_string(buf, self.cluster_id.as_str());
         }
         {
             put_uuid(buf, &self.incarnation_id);
@@ -251,7 +253,7 @@ impl BrokerRegistrationRequest {
             }
         }
         {
-            put_compact_nullable_string(buf, self.rack.as_deref());
+            put_compact_nullable_string(buf, self.rack.as_ref().map(|v| v.as_str()));
         }
         if version >= 1 {
             put_bool(buf, self.is_migrating_zk_broker);
@@ -274,7 +276,7 @@ impl BrokerRegistrationRequest {
         }
         let mut msg = BrokerRegistrationRequest::default();
         {
-            msg.broker_id = get_i32(buf)?;
+            msg.broker_id = BrokerId(get_i32(buf)?);
         }
         {
             msg.cluster_id = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;

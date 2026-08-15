@@ -1,18 +1,20 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 0-6.
 #[derive(Debug, Clone)]
 pub struct InitProducerIdRequest {
     /// The transactional id, or null if the producer is not transactional.
-    pub transactional_id: Option<Bytes>,
+    pub transactional_id: Option<TransactionalId>,
     /// The time in ms to wait before aborting idle transactions sent by this producer. This is only relevant if a TransactionalId has been defined.
     pub transaction_timeout_ms: i32,
     /// The producer id. This is used to disambiguate requests if a transactional id is reused following its expiration.
-    pub producer_id: i64,
+    pub producer_id: ProducerId,
     /// The producer's current epoch. This will be checked against the producer epoch on the broker, and the request will return an error if they do not match.
     pub producer_epoch: i16,
     /// True if the client wants to enable two-phase commit (2PC) protocol for transactions.
@@ -26,9 +28,9 @@ pub struct InitProducerIdRequest {
 impl Default for InitProducerIdRequest {
     fn default() -> Self {
         Self {
-            transactional_id: Some(Bytes::new()),
+            transactional_id: Some(TransactionalId::default()),
             transaction_timeout_ms: 0,
-            producer_id: -1,
+            producer_id: ProducerId(-1),
             producer_epoch: -1,
             enable2_pc: false,
             keep_prepared_txn: false,
@@ -49,7 +51,7 @@ impl InitProducerIdRequest {
             "unsupported version {} for api key {}", version, Self::API_KEY);
         let mut size = 0usize;
         {
-            size += if version >= 2 { compact_nullable_string_size(self.transactional_id.as_deref()) } else { nullable_string_size(self.transactional_id.as_deref()) };
+            size += if version >= 2 { compact_nullable_string_size(self.transactional_id.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.transactional_id.as_ref().map(|v| v.as_str())) };
         }
         {
             size += 4;
@@ -74,13 +76,13 @@ impl InitProducerIdRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            if version >= 2 { put_compact_nullable_string(buf, self.transactional_id.as_deref()) } else { put_nullable_string(buf, self.transactional_id.as_deref()) };
+            if version >= 2 { put_compact_nullable_string(buf, self.transactional_id.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.transactional_id.as_ref().map(|v| v.as_str())) };
         }
         {
             put_i32(buf, self.transaction_timeout_ms);
         }
         if version >= 3 {
-            put_i64(buf, self.producer_id);
+            put_i64(buf, self.producer_id.0);
         }
         if version >= 3 {
             put_i16(buf, self.producer_epoch);
@@ -100,13 +102,13 @@ impl InitProducerIdRequest {
         }
         let mut msg = InitProducerIdRequest::default();
         {
-            msg.transactional_id = if version >= 2 { get_compact_string(buf)? } else { get_string(buf)? };
+            msg.transactional_id = (if version >= 2 { get_compact_string(buf)? } else { get_string(buf)? }).map(TransactionalId);
         }
         {
             msg.transaction_timeout_ms = get_i32(buf)?;
         }
         if version >= 3 {
-            msg.producer_id = get_i64(buf)?;
+            msg.producer_id = ProducerId(get_i64(buf)?);
         }
         if version >= 3 {
             msg.producer_epoch = get_i16(buf)?;

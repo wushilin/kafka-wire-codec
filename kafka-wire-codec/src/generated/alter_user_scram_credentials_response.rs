@@ -1,17 +1,19 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct AlterUserScramCredentialsResult {
     /// The user name.
-    pub user: Bytes,
+    pub user: StrBytes,
     /// The error code.
     pub error_code: i16,
     /// The error message, if any.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -19,9 +21,9 @@ pub struct AlterUserScramCredentialsResult {
 impl Default for AlterUserScramCredentialsResult {
     fn default() -> Self {
         Self {
-            user: Bytes::new(),
+            user: StrBytes::new(),
             error_code: 0,
-            error_message: Some(Bytes::new()),
+            error_message: Some(StrBytes::new()),
             tagged_fields: Vec::new(),
         }
     }
@@ -31,13 +33,13 @@ impl AlterUserScramCredentialsResult {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.user);
+            size += compact_string_size(self.user.as_str());
         }
         {
             size += 2;
         }
         {
-            size += compact_nullable_string_size(self.error_message.as_deref());
+            size += compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str()));
         }
         size += tagged_fields_size(&self.tagged_fields);
         size
@@ -45,13 +47,13 @@ impl AlterUserScramCredentialsResult {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.user);
+            put_compact_string(buf, self.user.as_str());
         }
         {
             put_i16(buf, self.error_code);
         }
         {
-            put_compact_nullable_string(buf, self.error_message.as_deref());
+            put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str()));
         }
         put_tagged_fields(buf, &self.tagged_fields);
     }

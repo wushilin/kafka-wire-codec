@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct ReplicaState {
     /// The replica ID of the follower, or -1 if this request is from a consumer.
-    pub replica_id: i32,
+    pub replica_id: BrokerId,
     /// The epoch of this follower, or -1 if not available.
     pub replica_epoch: i64,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -17,7 +19,7 @@ pub struct ReplicaState {
 impl Default for ReplicaState {
     fn default() -> Self {
         Self {
-            replica_id: -1,
+            replica_id: BrokerId(-1),
             replica_epoch: -1,
             tagged_fields: Vec::new(),
         }
@@ -39,7 +41,7 @@ impl ReplicaState {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 15 {
-            put_i32(buf, self.replica_id);
+            put_i32(buf, self.replica_id.0);
         }
         if version >= 15 {
             put_i64(buf, self.replica_epoch);
@@ -50,7 +52,7 @@ impl ReplicaState {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = ReplicaState::default();
         if version >= 15 {
-            msg.replica_id = get_i32(buf)?;
+            msg.replica_id = BrokerId(get_i32(buf)?);
         }
         if version >= 15 {
             msg.replica_epoch = get_i64(buf)?;
@@ -63,9 +65,9 @@ impl ReplicaState {
 #[derive(Debug, Clone, Default)]
 pub struct FetchTopic {
     /// The name of the topic to fetch.
-    pub topic: Bytes,
+    pub topic: TopicName,
     /// The unique topic ID.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// The partitions to fetch.
     pub partitions: Vec<FetchPartition>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -76,7 +78,7 @@ impl FetchTopic {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version <= 12 {
-            size += if version >= 12 { compact_string_size(&self.topic) } else { string_size(&self.topic) };
+            size += if version >= 12 { compact_string_size(self.topic.as_str()) } else { string_size(self.topic.as_str()) };
         }
         if version >= 13 {
             size += 16;
@@ -95,7 +97,7 @@ impl FetchTopic {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version <= 12 {
-            if version >= 12 { put_compact_string(buf, &self.topic) } else { put_string(buf, &self.topic) };
+            if version >= 12 { put_compact_string(buf, self.topic.as_str()) } else { put_string(buf, self.topic.as_str()) };
         }
         if version >= 13 {
             put_uuid(buf, &self.topic_id);
@@ -112,7 +114,7 @@ impl FetchTopic {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = FetchTopic::default();
         if version <= 12 {
-            msg.topic = (if version >= 12 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.topic = TopicName((if version >= 12 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         if version >= 13 {
             msg.topic_id = get_uuid(buf)?;
@@ -236,9 +238,9 @@ impl FetchPartition {
 #[derive(Debug, Clone, Default)]
 pub struct ForgottenTopic {
     /// The topic name.
-    pub topic: Bytes,
+    pub topic: TopicName,
     /// The unique topic ID.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// The partitions indexes to forget.
     pub partitions: Vec<i32>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -249,7 +251,7 @@ impl ForgottenTopic {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version >= 7 && version <= 12 {
-            size += if version >= 12 { compact_string_size(&self.topic) } else { string_size(&self.topic) };
+            size += if version >= 12 { compact_string_size(self.topic.as_str()) } else { string_size(self.topic.as_str()) };
         }
         if version >= 13 {
             size += 16;
@@ -266,7 +268,7 @@ impl ForgottenTopic {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 7 && version <= 12 {
-            if version >= 12 { put_compact_string(buf, &self.topic) } else { put_string(buf, &self.topic) };
+            if version >= 12 { put_compact_string(buf, self.topic.as_str()) } else { put_string(buf, self.topic.as_str()) };
         }
         if version >= 13 {
             put_uuid(buf, &self.topic_id);
@@ -283,7 +285,7 @@ impl ForgottenTopic {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = ForgottenTopic::default();
         if version >= 7 && version <= 12 {
-            msg.topic = (if version >= 12 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.topic = TopicName((if version >= 12 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         if version >= 13 {
             msg.topic_id = get_uuid(buf)?;
@@ -304,7 +306,7 @@ impl ForgottenTopic {
 #[derive(Debug, Clone)]
 pub struct FetchRequest {
     /// The broker ID of the follower, of -1 if this request is from a consumer.
-    pub replica_id: i32,
+    pub replica_id: BrokerId,
     /// The maximum time in milliseconds to wait for the response.
     pub max_wait_ms: i32,
     /// The minimum bytes to accumulate in the response.
@@ -322,7 +324,7 @@ pub struct FetchRequest {
     /// In an incremental fetch request, the partitions to remove.
     pub forgotten_topics_data: Vec<ForgottenTopic>,
     /// Rack ID of the consumer making this request.
-    pub rack_id: Bytes,
+    pub rack_id: StrBytes,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -330,7 +332,7 @@ pub struct FetchRequest {
 impl Default for FetchRequest {
     fn default() -> Self {
         Self {
-            replica_id: -1,
+            replica_id: BrokerId(-1),
             max_wait_ms: 0,
             min_bytes: 0,
             max_bytes: 0x7fffffff,
@@ -339,7 +341,7 @@ impl Default for FetchRequest {
             session_epoch: -1,
             topics: Vec::new(),
             forgotten_topics_data: Vec::new(),
-            rack_id: Bytes::new(),
+            rack_id: StrBytes::new(),
             tagged_fields: Vec::new(),
         }
     }
@@ -394,7 +396,7 @@ impl FetchRequest {
             }
         }
         if version >= 11 {
-            size += if version >= 12 { compact_string_size(&self.rack_id) } else { string_size(&self.rack_id) };
+            size += if version >= 12 { compact_string_size(self.rack_id.as_str()) } else { string_size(self.rack_id.as_str()) };
         }
         if version >= 12 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -404,7 +406,7 @@ impl FetchRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         if version <= 14 {
-            put_i32(buf, self.replica_id);
+            put_i32(buf, self.replica_id.0);
         }
         {
             put_i32(buf, self.max_wait_ms);
@@ -437,7 +439,7 @@ impl FetchRequest {
             }
         }
         if version >= 11 {
-            if version >= 12 { put_compact_string(buf, &self.rack_id) } else { put_string(buf, &self.rack_id) };
+            if version >= 12 { put_compact_string(buf, self.rack_id.as_str()) } else { put_string(buf, self.rack_id.as_str()) };
         }
         if version >= 12 { put_tagged_fields(buf, &self.tagged_fields); }
     }
@@ -448,7 +450,7 @@ impl FetchRequest {
         }
         let mut msg = FetchRequest::default();
         if version <= 14 {
-            msg.replica_id = get_i32(buf)?;
+            msg.replica_id = BrokerId(get_i32(buf)?);
         }
         {
             msg.max_wait_ms = get_i32(buf)?;

@@ -1,16 +1,18 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 0-5.
 #[derive(Debug, Clone, Default)]
 pub struct EndTxnRequest {
     /// The ID of the transaction to end.
-    pub transactional_id: Bytes,
+    pub transactional_id: TransactionalId,
     /// The producer ID.
-    pub producer_id: i64,
+    pub producer_id: ProducerId,
     /// The current epoch associated with the producer.
     pub producer_epoch: i16,
     /// True if the transaction was committed, false if it was aborted.
@@ -31,7 +33,7 @@ impl EndTxnRequest {
             "unsupported version {} for api key {}", version, Self::API_KEY);
         let mut size = 0usize;
         {
-            size += if version >= 3 { compact_string_size(&self.transactional_id) } else { string_size(&self.transactional_id) };
+            size += if version >= 3 { compact_string_size(self.transactional_id.as_str()) } else { string_size(self.transactional_id.as_str()) };
         }
         {
             size += 8;
@@ -50,10 +52,10 @@ impl EndTxnRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            if version >= 3 { put_compact_string(buf, &self.transactional_id) } else { put_string(buf, &self.transactional_id) };
+            if version >= 3 { put_compact_string(buf, self.transactional_id.as_str()) } else { put_string(buf, self.transactional_id.as_str()) };
         }
         {
-            put_i64(buf, self.producer_id);
+            put_i64(buf, self.producer_id.0);
         }
         {
             put_i16(buf, self.producer_epoch);
@@ -70,10 +72,10 @@ impl EndTxnRequest {
         }
         let mut msg = EndTxnRequest::default();
         {
-            msg.transactional_id = (if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.transactional_id = TransactionalId((if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
-            msg.producer_id = get_i64(buf)?;
+            msg.producer_id = ProducerId(get_i64(buf)?);
         }
         {
             msg.producer_epoch = get_i16(buf)?;

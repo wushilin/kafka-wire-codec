@@ -1,15 +1,17 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct OffsetCommitRequestTopic {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The topic ID.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// Each partition to commit offsets for.
     pub partitions: Vec<OffsetCommitRequestPartition>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -20,7 +22,7 @@ impl OffsetCommitRequestTopic {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version <= 9 {
-            size += if version >= 8 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 8 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         if version >= 10 {
             size += 16;
@@ -39,7 +41,7 @@ impl OffsetCommitRequestTopic {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version <= 9 {
-            if version >= 8 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 8 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         if version >= 10 {
             put_uuid(buf, &self.topic_id);
@@ -56,7 +58,7 @@ impl OffsetCommitRequestTopic {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = OffsetCommitRequestTopic::default();
         if version <= 9 {
-            msg.name = (if version >= 8 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((if version >= 8 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         if version >= 10 {
             msg.topic_id = get_uuid(buf)?;
@@ -82,7 +84,7 @@ pub struct OffsetCommitRequestPartition {
     /// The leader epoch of this partition.
     pub committed_leader_epoch: i32,
     /// Any associated metadata the client wants to keep.
-    pub committed_metadata: Option<Bytes>,
+    pub committed_metadata: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -93,7 +95,7 @@ impl Default for OffsetCommitRequestPartition {
             partition_index: 0,
             committed_offset: 0,
             committed_leader_epoch: -1,
-            committed_metadata: Some(Bytes::new()),
+            committed_metadata: Some(StrBytes::new()),
             tagged_fields: Vec::new(),
         }
     }
@@ -112,7 +114,7 @@ impl OffsetCommitRequestPartition {
             size += 4;
         }
         {
-            size += if version >= 8 { compact_nullable_string_size(self.committed_metadata.as_deref()) } else { nullable_string_size(self.committed_metadata.as_deref()) };
+            size += if version >= 8 { compact_nullable_string_size(self.committed_metadata.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.committed_metadata.as_ref().map(|v| v.as_str())) };
         }
         if version >= 8 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -129,7 +131,7 @@ impl OffsetCommitRequestPartition {
             put_i32(buf, self.committed_leader_epoch);
         }
         {
-            if version >= 8 { put_compact_nullable_string(buf, self.committed_metadata.as_deref()) } else { put_nullable_string(buf, self.committed_metadata.as_deref()) };
+            if version >= 8 { put_compact_nullable_string(buf, self.committed_metadata.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.committed_metadata.as_ref().map(|v| v.as_str())) };
         }
         if version >= 8 { put_tagged_fields(buf, &self.tagged_fields); }
     }
@@ -157,13 +159,13 @@ impl OffsetCommitRequestPartition {
 #[derive(Debug, Clone)]
 pub struct OffsetCommitRequest {
     /// The unique group identifier.
-    pub group_id: Bytes,
+    pub group_id: GroupId,
     /// The generation of the group if using the classic group protocol or the member epoch if using the consumer protocol.
     pub generation_id_or_member_epoch: i32,
     /// The member ID assigned by the group coordinator.
-    pub member_id: Bytes,
+    pub member_id: StrBytes,
     /// The unique identifier of the consumer instance provided by end user.
-    pub group_instance_id: Option<Bytes>,
+    pub group_instance_id: Option<StrBytes>,
     /// The time period in ms to retain the offset.
     pub retention_time_ms: i64,
     /// The topics to commit offsets for.
@@ -175,9 +177,9 @@ pub struct OffsetCommitRequest {
 impl Default for OffsetCommitRequest {
     fn default() -> Self {
         Self {
-            group_id: Bytes::new(),
+            group_id: GroupId::default(),
             generation_id_or_member_epoch: -1,
-            member_id: Bytes::new(),
+            member_id: StrBytes::new(),
             group_instance_id: None,
             retention_time_ms: -1,
             topics: Vec::new(),
@@ -198,16 +200,16 @@ impl OffsetCommitRequest {
             "unsupported version {} for api key {}", version, Self::API_KEY);
         let mut size = 0usize;
         {
-            size += if version >= 8 { compact_string_size(&self.group_id) } else { string_size(&self.group_id) };
+            size += if version >= 8 { compact_string_size(self.group_id.as_str()) } else { string_size(self.group_id.as_str()) };
         }
         if version >= 1 {
             size += 4;
         }
         if version >= 1 {
-            size += if version >= 8 { compact_string_size(&self.member_id) } else { string_size(&self.member_id) };
+            size += if version >= 8 { compact_string_size(self.member_id.as_str()) } else { string_size(self.member_id.as_str()) };
         }
         if version >= 7 {
-            size += if version >= 7 { if version >= 8 { compact_nullable_string_size(self.group_instance_id.as_deref()) } else { nullable_string_size(self.group_instance_id.as_deref()) } } else { let v = self.group_instance_id.as_deref().expect("field group_instance_id is None but not nullable at this version"); if version >= 8 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 7 { if version >= 8 { compact_nullable_string_size(self.group_instance_id.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.group_instance_id.as_ref().map(|v| v.as_str())) } } else { let v = self.group_instance_id.as_ref().expect("field group_instance_id is None but not nullable at this version"); if version >= 8 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         if version >= 2 && version <= 4 {
             size += 8;
@@ -228,16 +230,16 @@ impl OffsetCommitRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            if version >= 8 { put_compact_string(buf, &self.group_id) } else { put_string(buf, &self.group_id) };
+            if version >= 8 { put_compact_string(buf, self.group_id.as_str()) } else { put_string(buf, self.group_id.as_str()) };
         }
         if version >= 1 {
             put_i32(buf, self.generation_id_or_member_epoch);
         }
         if version >= 1 {
-            if version >= 8 { put_compact_string(buf, &self.member_id) } else { put_string(buf, &self.member_id) };
+            if version >= 8 { put_compact_string(buf, self.member_id.as_str()) } else { put_string(buf, self.member_id.as_str()) };
         }
         if version >= 7 {
-            if version >= 7 { if version >= 8 { put_compact_nullable_string(buf, self.group_instance_id.as_deref()) } else { put_nullable_string(buf, self.group_instance_id.as_deref()) } } else { let v = self.group_instance_id.as_deref().expect("field group_instance_id is None but not nullable at this version"); if version >= 8 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 7 { if version >= 8 { put_compact_nullable_string(buf, self.group_instance_id.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.group_instance_id.as_ref().map(|v| v.as_str())) } } else { let v = self.group_instance_id.as_ref().expect("field group_instance_id is None but not nullable at this version"); if version >= 8 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         if version >= 2 && version <= 4 {
             put_i64(buf, self.retention_time_ms);
@@ -257,7 +259,7 @@ impl OffsetCommitRequest {
         }
         let mut msg = OffsetCommitRequest::default();
         {
-            msg.group_id = (if version >= 8 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.group_id = GroupId((if version >= 8 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         if version >= 1 {
             msg.generation_id_or_member_epoch = get_i32(buf)?;

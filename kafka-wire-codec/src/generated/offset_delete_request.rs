@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct OffsetDeleteRequestTopic {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// Each partition to delete offsets for.
     pub partitions: Vec<OffsetDeleteRequestPartition>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl OffsetDeleteRequestTopic {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += string_size(&self.name);
+            size += string_size(self.name.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -33,7 +35,7 @@ impl OffsetDeleteRequestTopic {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_string(buf, &self.name);
+            put_string(buf, self.name.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -46,7 +48,7 @@ impl OffsetDeleteRequestTopic {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = OffsetDeleteRequestTopic::default();
         {
-            msg.name = (get_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((get_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } };
@@ -95,7 +97,7 @@ impl OffsetDeleteRequestPartition {
 #[derive(Debug, Clone, Default)]
 pub struct OffsetDeleteRequest {
     /// The unique group identifier.
-    pub group_id: Bytes,
+    pub group_id: GroupId,
     /// The topics to delete offsets for.
     pub topics: Vec<OffsetDeleteRequestTopic>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -114,7 +116,7 @@ impl OffsetDeleteRequest {
             "unsupported version {} for api key {}", version, Self::API_KEY);
         let mut size = 0usize;
         {
-            size += string_size(&self.group_id);
+            size += string_size(self.group_id.as_str());
         }
         {
             { let arr = &self.topics;
@@ -131,7 +133,7 @@ impl OffsetDeleteRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            put_string(buf, &self.group_id);
+            put_string(buf, self.group_id.as_str());
         }
         {
             { let arr = &self.topics;
@@ -147,7 +149,7 @@ impl OffsetDeleteRequest {
         }
         let mut msg = OffsetDeleteRequest::default();
         {
-            msg.group_id = (get_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.group_id = GroupId((get_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } };

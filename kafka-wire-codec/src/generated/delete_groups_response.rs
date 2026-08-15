@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct DeletableGroupResult {
     /// The group id.
-    pub group_id: Bytes,
+    pub group_id: GroupId,
     /// The deletion error, or 0 if the deletion succeeded.
     pub error_code: i16,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl DeletableGroupResult {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 2 { compact_string_size(&self.group_id) } else { string_size(&self.group_id) };
+            size += if version >= 2 { compact_string_size(self.group_id.as_str()) } else { string_size(self.group_id.as_str()) };
         }
         {
             size += 2;
@@ -29,7 +31,7 @@ impl DeletableGroupResult {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 2 { put_compact_string(buf, &self.group_id) } else { put_string(buf, &self.group_id) };
+            if version >= 2 { put_compact_string(buf, self.group_id.as_str()) } else { put_string(buf, self.group_id.as_str()) };
         }
         {
             put_i16(buf, self.error_code);
@@ -40,7 +42,7 @@ impl DeletableGroupResult {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = DeletableGroupResult::default();
         {
-            msg.group_id = (if version >= 2 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.group_id = GroupId((if version >= 2 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             msg.error_code = get_i16(buf)?;

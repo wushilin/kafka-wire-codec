@@ -1,8 +1,10 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 0-2.
 #[derive(Debug, Clone)]
@@ -10,7 +12,7 @@ pub struct SaslAuthenticateResponse {
     /// The error code, or 0 if there was no error.
     pub error_code: i16,
     /// The error message, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// The SASL authentication bytes from the server, as defined by the SASL mechanism.
     pub auth_bytes: Bytes,
     /// Number of milliseconds after which only re-authentication over the existing connection to create a new session can occur.
@@ -23,7 +25,7 @@ impl Default for SaslAuthenticateResponse {
     fn default() -> Self {
         Self {
             error_code: 0,
-            error_message: Some(Bytes::new()),
+            error_message: Some(StrBytes::new()),
             auth_bytes: Bytes::new(),
             session_lifetime_ms: 0,
             tagged_fields: Vec::new(),
@@ -46,7 +48,7 @@ impl SaslAuthenticateResponse {
             size += 2;
         }
         {
-            size += if version >= 2 { compact_nullable_string_size(self.error_message.as_deref()) } else { nullable_string_size(self.error_message.as_deref()) };
+            size += if version >= 2 { compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) };
         }
         {
             size += if version >= 2 { compact_bytes_size(&self.auth_bytes) } else { bytes_size(&self.auth_bytes) };
@@ -65,7 +67,7 @@ impl SaslAuthenticateResponse {
             put_i16(buf, self.error_code);
         }
         {
-            if version >= 2 { put_compact_nullable_string(buf, self.error_message.as_deref()) } else { put_nullable_string(buf, self.error_message.as_deref()) };
+            if version >= 2 { put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) };
         }
         {
             if version >= 2 { put_compact_bytes_zc(buf, &self.auth_bytes) } else { put_bytes_zc(buf, &self.auth_bytes) };

@@ -1,15 +1,17 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct MetadataRequestTopic {
     /// The topic id.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// The topic name.
-    pub name: Option<Bytes>,
+    pub name: Option<TopicName>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -17,8 +19,8 @@ pub struct MetadataRequestTopic {
 impl Default for MetadataRequestTopic {
     fn default() -> Self {
         Self {
-            topic_id: [0u8; 16],
-            name: Some(Bytes::new()),
+            topic_id: Uuid::nil(),
+            name: Some(TopicName::default()),
             tagged_fields: Vec::new(),
         }
     }
@@ -31,7 +33,7 @@ impl MetadataRequestTopic {
             size += 16;
         }
         {
-            size += if version >= 10 { if version >= 9 { compact_nullable_string_size(self.name.as_deref()) } else { nullable_string_size(self.name.as_deref()) } } else { let v = self.name.as_deref().expect("field name is None but not nullable at this version"); if version >= 9 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 10 { if version >= 9 { compact_nullable_string_size(self.name.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.name.as_ref().map(|v| v.as_str())) } } else { let v = self.name.as_ref().expect("field name is None but not nullable at this version"); if version >= 9 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         if version >= 9 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -42,7 +44,7 @@ impl MetadataRequestTopic {
             put_uuid(buf, &self.topic_id);
         }
         {
-            if version >= 10 { if version >= 9 { put_compact_nullable_string(buf, self.name.as_deref()) } else { put_nullable_string(buf, self.name.as_deref()) } } else { let v = self.name.as_deref().expect("field name is None but not nullable at this version"); if version >= 9 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 10 { if version >= 9 { put_compact_nullable_string(buf, self.name.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.name.as_ref().map(|v| v.as_str())) } } else { let v = self.name.as_ref().expect("field name is None but not nullable at this version"); if version >= 9 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         if version >= 9 { put_tagged_fields(buf, &self.tagged_fields); }
     }
@@ -53,7 +55,7 @@ impl MetadataRequestTopic {
             msg.topic_id = get_uuid(buf)?;
         }
         {
-            msg.name = { let v = if version >= 9 { get_compact_string(buf)? } else { get_string(buf)? }; if version >= 10 { v } else { Some(v.ok_or(DecodeError::NullForNonNullable)?) } };
+            msg.name = { let v = if version >= 9 { get_compact_string(buf)? } else { get_string(buf)? }; if version >= 10 { v } else { Some(v.ok_or(DecodeError::NullForNonNullable)?) } }.map(TopicName);
         }
         if version >= 9 { msg.tagged_fields = get_tagged_fields(buf)?; }
         Ok(msg)

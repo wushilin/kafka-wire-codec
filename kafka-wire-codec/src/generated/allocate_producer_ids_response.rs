@@ -1,8 +1,10 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 0-0.
 #[derive(Debug, Clone, Default)]
@@ -12,7 +14,7 @@ pub struct AllocateProducerIdsResponse {
     /// The top level response error code.
     pub error_code: i16,
     /// The first producer ID in this range, inclusive.
-    pub producer_id_start: i64,
+    pub producer_id_start: ProducerId,
     /// The number of producer IDs in this range.
     pub producer_id_len: i32,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -56,7 +58,7 @@ impl AllocateProducerIdsResponse {
             put_i16(buf, self.error_code);
         }
         {
-            put_i64(buf, self.producer_id_start);
+            put_i64(buf, self.producer_id_start.0);
         }
         {
             put_i32(buf, self.producer_id_len);
@@ -76,7 +78,7 @@ impl AllocateProducerIdsResponse {
             msg.error_code = get_i16(buf)?;
         }
         {
-            msg.producer_id_start = get_i64(buf)?;
+            msg.producer_id_start = ProducerId(get_i64(buf)?);
         }
         {
             msg.producer_id_len = get_i32(buf)?;

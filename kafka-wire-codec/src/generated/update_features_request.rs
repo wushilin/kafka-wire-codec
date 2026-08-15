@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct FeatureUpdateKey {
     /// The name of the finalized feature to be updated.
-    pub feature: Bytes,
+    pub feature: StrBytes,
     /// The new maximum version level for the finalized feature. A value >= 1 is valid. A value < 1, is special, and can be used to request the deletion of the finalized feature.
     pub max_version_level: i16,
     /// DEPRECATED in version 1 (see DowngradeType). When set to true, the finalized feature version level is allowed to be downgraded/deleted. The downgrade request will fail if the new maximum version level is a value that's not lower than the existing maximum finalized version level.
@@ -21,7 +23,7 @@ pub struct FeatureUpdateKey {
 impl Default for FeatureUpdateKey {
     fn default() -> Self {
         Self {
-            feature: Bytes::new(),
+            feature: StrBytes::new(),
             max_version_level: 0,
             allow_downgrade: false,
             upgrade_type: 1,
@@ -34,7 +36,7 @@ impl FeatureUpdateKey {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.feature);
+            size += compact_string_size(self.feature.as_str());
         }
         {
             size += 2;
@@ -51,7 +53,7 @@ impl FeatureUpdateKey {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.feature);
+            put_compact_string(buf, self.feature.as_str());
         }
         {
             put_i16(buf, self.max_version_level);

@@ -1,14 +1,16 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 0-0.
 #[derive(Debug, Clone, Default)]
 pub struct UnregisterBrokerRequest {
     /// The broker ID to unregister.
-    pub broker_id: i32,
+    pub broker_id: BrokerId,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -35,7 +37,7 @@ impl UnregisterBrokerRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            put_i32(buf, self.broker_id);
+            put_i32(buf, self.broker_id.0);
         }
         put_tagged_fields(buf, &self.tagged_fields);
     }
@@ -46,7 +48,7 @@ impl UnregisterBrokerRequest {
         }
         let mut msg = UnregisterBrokerRequest::default();
         {
-            msg.broker_id = get_i32(buf)?;
+            msg.broker_id = BrokerId(get_i32(buf)?);
         }
         msg.tagged_fields = get_tagged_fields(buf)?;
         Ok(msg)

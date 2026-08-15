@@ -1,15 +1,17 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct OffsetCommitResponseTopic {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The topic ID.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// The responses for each partition in the topic.
     pub partitions: Vec<OffsetCommitResponsePartition>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -20,7 +22,7 @@ impl OffsetCommitResponseTopic {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version <= 9 {
-            size += if version >= 8 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 8 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         if version >= 10 {
             size += 16;
@@ -39,7 +41,7 @@ impl OffsetCommitResponseTopic {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version <= 9 {
-            if version >= 8 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 8 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         if version >= 10 {
             put_uuid(buf, &self.topic_id);
@@ -56,7 +58,7 @@ impl OffsetCommitResponseTopic {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = OffsetCommitResponseTopic::default();
         if version <= 9 {
-            msg.name = (if version >= 8 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((if version >= 8 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         if version >= 10 {
             msg.topic_id = get_uuid(buf)?;

@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct ReadStateData {
     /// The topic identifier.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// The data for the partitions.
     pub partitions: Vec<PartitionData>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -112,7 +114,7 @@ impl PartitionData {
 #[derive(Debug, Clone, Default)]
 pub struct ReadShareGroupStateRequest {
     /// The group identifier.
-    pub group_id: Bytes,
+    pub group_id: StrBytes,
     /// The data for the topics.
     pub topics: Vec<ReadStateData>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -131,7 +133,7 @@ impl ReadShareGroupStateRequest {
             "unsupported version {} for api key {}", version, Self::API_KEY);
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.group_id);
+            size += compact_string_size(self.group_id.as_str());
         }
         {
             { let arr = &self.topics;
@@ -149,7 +151,7 @@ impl ReadShareGroupStateRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            put_compact_string(buf, &self.group_id);
+            put_compact_string(buf, self.group_id.as_str());
         }
         {
             { let arr = &self.topics;

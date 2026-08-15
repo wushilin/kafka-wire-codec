@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct TopicData {
     /// The topic name.
-    pub topic_name: Bytes,
+    pub topic_name: TopicName,
     /// The partition data.
     pub partitions: Vec<PartitionData>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl TopicData {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.topic_name);
+            size += compact_string_size(self.topic_name.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -34,7 +36,7 @@ impl TopicData {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.topic_name);
+            put_compact_string(buf, self.topic_name.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -48,7 +50,7 @@ impl TopicData {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = TopicData::default();
         {
-            msg.topic_name = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.topic_name = TopicName((get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };
@@ -69,11 +71,11 @@ pub struct PartitionData {
     /// The epoch of the voter sending the request
     pub replica_epoch: i32,
     /// The replica id of the voter sending the request
-    pub replica_id: i32,
+    pub replica_id: BrokerId,
     /// The directory id of the voter sending the request
-    pub replica_directory_id: [u8; 16],
+    pub replica_directory_id: Uuid,
     /// The directory id of the voter receiving the request
-    pub voter_directory_id: [u8; 16],
+    pub voter_directory_id: Uuid,
     /// The epoch of the last record written to the metadata log.
     pub last_offset_epoch: i32,
     /// The log end offset of the metadata log of the voter sending the request.
@@ -123,7 +125,7 @@ impl PartitionData {
             put_i32(buf, self.replica_epoch);
         }
         {
-            put_i32(buf, self.replica_id);
+            put_i32(buf, self.replica_id.0);
         }
         if version >= 1 {
             put_uuid(buf, &self.replica_directory_id);
@@ -152,7 +154,7 @@ impl PartitionData {
             msg.replica_epoch = get_i32(buf)?;
         }
         {
-            msg.replica_id = get_i32(buf)?;
+            msg.replica_id = BrokerId(get_i32(buf)?);
         }
         if version >= 1 {
             msg.replica_directory_id = get_uuid(buf)?;
@@ -178,9 +180,9 @@ impl PartitionData {
 #[derive(Debug, Clone)]
 pub struct VoteRequest {
     /// The cluster id.
-    pub cluster_id: Option<Bytes>,
+    pub cluster_id: Option<StrBytes>,
     /// The replica id of the voter receiving the request.
-    pub voter_id: i32,
+    pub voter_id: BrokerId,
     /// The topic data.
     pub topics: Vec<TopicData>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -191,7 +193,7 @@ impl Default for VoteRequest {
     fn default() -> Self {
         Self {
             cluster_id: None,
-            voter_id: -1,
+            voter_id: BrokerId(-1),
             topics: Vec::new(),
             tagged_fields: Vec::new(),
         }
@@ -210,7 +212,7 @@ impl VoteRequest {
             "unsupported version {} for api key {}", version, Self::API_KEY);
         let mut size = 0usize;
         {
-            size += compact_nullable_string_size(self.cluster_id.as_deref());
+            size += compact_nullable_string_size(self.cluster_id.as_ref().map(|v| v.as_str()));
         }
         if version >= 1 {
             size += 4;
@@ -231,10 +233,10 @@ impl VoteRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            put_compact_nullable_string(buf, self.cluster_id.as_deref());
+            put_compact_nullable_string(buf, self.cluster_id.as_ref().map(|v| v.as_str()));
         }
         if version >= 1 {
-            put_i32(buf, self.voter_id);
+            put_i32(buf, self.voter_id.0);
         }
         {
             { let arr = &self.topics;
@@ -254,7 +256,7 @@ impl VoteRequest {
             msg.cluster_id = get_compact_string(buf)?;
         }
         if version >= 1 {
-            msg.voter_id = get_i32(buf)?;
+            msg.voter_id = BrokerId(get_i32(buf)?);
         }
         {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };

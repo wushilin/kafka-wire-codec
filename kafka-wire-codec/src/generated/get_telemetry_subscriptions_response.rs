@@ -1,8 +1,10 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 0-0.
 #[derive(Debug, Clone, Default)]
@@ -12,7 +14,7 @@ pub struct GetTelemetrySubscriptionsResponse {
     /// The error code, or 0 if there was no error.
     pub error_code: i16,
     /// Assigned client instance id if ClientInstanceId was 0 in the request, else 0.
-    pub client_instance_id: [u8; 16],
+    pub client_instance_id: Uuid,
     /// Unique identifier for the current subscription set for this client instance.
     pub subscription_id: i32,
     /// Compression types that broker accepts for the PushTelemetryRequest.
@@ -24,7 +26,7 @@ pub struct GetTelemetrySubscriptionsResponse {
     /// Flag to indicate monotonic/counter metrics are to be emitted as deltas or cumulative values.
     pub delta_temporality: bool,
     /// Requested metrics prefix string match. Empty array: No metrics subscribed, Array[0] empty string: All metrics subscribed.
-    pub requested_metrics: Vec<Bytes>,
+    pub requested_metrics: Vec<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -71,7 +73,7 @@ impl GetTelemetrySubscriptionsResponse {
             { let arr = &self.requested_metrics;
                 size += uvarint_size(arr.len() as u64 + 1);
                 for item in arr {
-                    size += compact_string_size(item);
+                    size += compact_string_size(item.as_str());
                 }
             }
         }
@@ -112,7 +114,7 @@ impl GetTelemetrySubscriptionsResponse {
         {
             { let arr = &self.requested_metrics;
                 put_uvarint(buf, arr.len() as u64 + 1);
-                for item in arr { put_compact_string(buf, item); }
+                for item in arr { put_compact_string(buf, item.as_str()); }
             }
         }
         put_tagged_fields(buf, &self.tagged_fields);

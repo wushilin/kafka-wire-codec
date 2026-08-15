@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct CreatePartitionsTopic {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The new partition count.
     pub count: i32,
     /// The new partition assignments.
@@ -19,7 +21,7 @@ pub struct CreatePartitionsTopic {
 impl Default for CreatePartitionsTopic {
     fn default() -> Self {
         Self {
-            name: Bytes::new(),
+            name: TopicName::default(),
             count: 0,
             assignments: Some(Vec::new()),
             tagged_fields: Vec::new(),
@@ -31,7 +33,7 @@ impl CreatePartitionsTopic {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 2 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 2 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         {
             size += 4;
@@ -55,7 +57,7 @@ impl CreatePartitionsTopic {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 2 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 2 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         {
             put_i32(buf, self.count);
@@ -77,7 +79,7 @@ impl CreatePartitionsTopic {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = CreatePartitionsTopic::default();
         {
-            msg.name = (if version >= 2 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((if version >= 2 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             msg.count = get_i32(buf)?;
@@ -101,7 +103,7 @@ impl CreatePartitionsTopic {
 #[derive(Debug, Clone, Default)]
 pub struct CreatePartitionsAssignment {
     /// The assigned broker IDs.
-    pub broker_ids: Vec<i32>,
+    pub broker_ids: Vec<BrokerId>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -123,7 +125,7 @@ impl CreatePartitionsAssignment {
         {
             { let arr = &self.broker_ids;
                 if version >= 2 { put_uvarint(buf, arr.len() as u64 + 1); } else { put_i32(buf, arr.len() as i32); }
-                for item in arr { put_i32(buf, *item); }
+                for item in arr { put_i32(buf, item.0); }
             }
         }
         if version >= 2 { put_tagged_fields(buf, &self.tagged_fields); }
@@ -135,7 +137,7 @@ impl CreatePartitionsAssignment {
             let len_opt = if version >= 2 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };
             let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
             { let mut items = Vec::with_capacity(count.min(buf.len()));
-                for _ in 0..count { items.push(get_i32(buf)?); }
+                for _ in 0..count { items.push((get_i32(buf)).map(BrokerId)?); }
             msg.broker_ids = items; }
         }
         if version >= 2 { msg.tagged_fields = get_tagged_fields(buf)?; }

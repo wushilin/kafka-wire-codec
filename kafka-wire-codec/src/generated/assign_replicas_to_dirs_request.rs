@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct DirectoryData {
     /// The ID of the directory.
-    pub id: [u8; 16],
+    pub id: Uuid,
     /// The topics assigned to the directory.
     pub topics: Vec<TopicData>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -65,7 +67,7 @@ impl DirectoryData {
 #[derive(Debug, Clone, Default)]
 pub struct TopicData {
     /// The ID of the assigned topic.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// The partitions assigned to the directory.
     pub partitions: Vec<PartitionData>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -159,7 +161,7 @@ impl PartitionData {
 #[derive(Debug, Clone)]
 pub struct AssignReplicasToDirsRequest {
     /// The ID of the requesting broker.
-    pub broker_id: i32,
+    pub broker_id: BrokerId,
     /// The epoch of the requesting broker.
     pub broker_epoch: i64,
     /// The directories to which replicas should be assigned.
@@ -171,7 +173,7 @@ pub struct AssignReplicasToDirsRequest {
 impl Default for AssignReplicasToDirsRequest {
     fn default() -> Self {
         Self {
-            broker_id: 0,
+            broker_id: BrokerId::default(),
             broker_epoch: -1,
             directories: Vec::new(),
             tagged_fields: Vec::new(),
@@ -212,7 +214,7 @@ impl AssignReplicasToDirsRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            put_i32(buf, self.broker_id);
+            put_i32(buf, self.broker_id.0);
         }
         {
             put_i64(buf, self.broker_epoch);
@@ -232,7 +234,7 @@ impl AssignReplicasToDirsRequest {
         }
         let mut msg = AssignReplicasToDirsRequest::default();
         {
-            msg.broker_id = get_i32(buf)?;
+            msg.broker_id = BrokerId(get_i32(buf)?);
         }
         {
             msg.broker_epoch = get_i64(buf)?;

@@ -1,17 +1,19 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct DescribeConfigsResource {
     /// The resource type.
     pub resource_type: i8,
     /// The resource name.
-    pub resource_name: Bytes,
+    pub resource_name: StrBytes,
     /// The configuration keys to list, or null to list all configuration keys.
-    pub configuration_keys: Option<Vec<Bytes>>,
+    pub configuration_keys: Option<Vec<StrBytes>>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -20,7 +22,7 @@ impl Default for DescribeConfigsResource {
     fn default() -> Self {
         Self {
             resource_type: 0,
-            resource_name: Bytes::new(),
+            resource_name: StrBytes::new(),
             configuration_keys: Some(Vec::new()),
             tagged_fields: Vec::new(),
         }
@@ -34,14 +36,14 @@ impl DescribeConfigsResource {
             size += 1;
         }
         {
-            size += if version >= 4 { compact_string_size(&self.resource_name) } else { string_size(&self.resource_name) };
+            size += if version >= 4 { compact_string_size(self.resource_name.as_str()) } else { string_size(self.resource_name.as_str()) };
         }
         {
             match &self.configuration_keys {
                 Some(arr) => {
                 if version >= 4 { size += uvarint_size(arr.len() as u64 + 1); } else { size += 4; }
                 for item in arr {
-                    size += if version >= 4 { compact_string_size(item) } else { string_size(item) };
+                    size += if version >= 4 { compact_string_size(item.as_str()) } else { string_size(item.as_str()) };
                 }
                 }
                 None => {
@@ -58,13 +60,13 @@ impl DescribeConfigsResource {
             put_i8(buf, self.resource_type);
         }
         {
-            if version >= 4 { put_compact_string(buf, &self.resource_name) } else { put_string(buf, &self.resource_name) };
+            if version >= 4 { put_compact_string(buf, self.resource_name.as_str()) } else { put_string(buf, self.resource_name.as_str()) };
         }
         {
             match &self.configuration_keys {
                 Some(arr) => {
                 if version >= 4 { put_uvarint(buf, arr.len() as u64 + 1); } else { put_i32(buf, arr.len() as i32); }
-                for item in arr { if version >= 4 { put_compact_string(buf, item); } else { put_string(buf, item); } }
+                for item in arr { if version >= 4 { put_compact_string(buf, item.as_str()); } else { put_string(buf, item.as_str()); } }
                 }
                 None => {
                     if version >= 4 { put_uvarint(buf, 0); } else { put_i32(buf, -1); }

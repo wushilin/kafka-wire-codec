@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct ScramCredentialDeletion {
     /// The user name.
-    pub name: Bytes,
+    pub name: StrBytes,
     /// The SCRAM mechanism.
     pub mechanism: i8,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl ScramCredentialDeletion {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.name);
+            size += compact_string_size(self.name.as_str());
         }
         {
             size += 1;
@@ -29,7 +31,7 @@ impl ScramCredentialDeletion {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.name);
+            put_compact_string(buf, self.name.as_str());
         }
         {
             put_i8(buf, self.mechanism);
@@ -53,7 +55,7 @@ impl ScramCredentialDeletion {
 #[derive(Debug, Clone, Default)]
 pub struct ScramCredentialUpsertion {
     /// The user name.
-    pub name: Bytes,
+    pub name: StrBytes,
     /// The SCRAM mechanism.
     pub mechanism: i8,
     /// The number of iterations.
@@ -70,7 +72,7 @@ impl ScramCredentialUpsertion {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.name);
+            size += compact_string_size(self.name.as_str());
         }
         {
             size += 1;
@@ -90,7 +92,7 @@ impl ScramCredentialUpsertion {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.name);
+            put_compact_string(buf, self.name.as_str());
         }
         {
             put_i8(buf, self.mechanism);

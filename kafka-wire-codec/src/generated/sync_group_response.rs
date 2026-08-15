@@ -1,8 +1,10 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 0-5.
 #[derive(Debug, Clone, Default)]
@@ -12,9 +14,9 @@ pub struct SyncGroupResponse {
     /// The error code, or 0 if there was no error.
     pub error_code: i16,
     /// The group protocol type.
-    pub protocol_type: Option<Bytes>,
+    pub protocol_type: Option<StrBytes>,
     /// The group protocol name.
-    pub protocol_name: Option<Bytes>,
+    pub protocol_name: Option<StrBytes>,
     /// The member assignment.
     pub assignment: Bytes,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -39,10 +41,10 @@ impl SyncGroupResponse {
             size += 2;
         }
         if version >= 5 {
-            size += if version >= 5 { if version >= 4 { compact_nullable_string_size(self.protocol_type.as_deref()) } else { nullable_string_size(self.protocol_type.as_deref()) } } else { let v = self.protocol_type.as_deref().expect("field protocol_type is None but not nullable at this version"); if version >= 4 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 5 { if version >= 4 { compact_nullable_string_size(self.protocol_type.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.protocol_type.as_ref().map(|v| v.as_str())) } } else { let v = self.protocol_type.as_ref().expect("field protocol_type is None but not nullable at this version"); if version >= 4 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         if version >= 5 {
-            size += if version >= 5 { if version >= 4 { compact_nullable_string_size(self.protocol_name.as_deref()) } else { nullable_string_size(self.protocol_name.as_deref()) } } else { let v = self.protocol_name.as_deref().expect("field protocol_name is None but not nullable at this version"); if version >= 4 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 5 { if version >= 4 { compact_nullable_string_size(self.protocol_name.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.protocol_name.as_ref().map(|v| v.as_str())) } } else { let v = self.protocol_name.as_ref().expect("field protocol_name is None but not nullable at this version"); if version >= 4 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         {
             size += if version >= 4 { compact_bytes_size(&self.assignment) } else { bytes_size(&self.assignment) };
@@ -61,10 +63,10 @@ impl SyncGroupResponse {
             put_i16(buf, self.error_code);
         }
         if version >= 5 {
-            if version >= 5 { if version >= 4 { put_compact_nullable_string(buf, self.protocol_type.as_deref()) } else { put_nullable_string(buf, self.protocol_type.as_deref()) } } else { let v = self.protocol_type.as_deref().expect("field protocol_type is None but not nullable at this version"); if version >= 4 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 5 { if version >= 4 { put_compact_nullable_string(buf, self.protocol_type.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.protocol_type.as_ref().map(|v| v.as_str())) } } else { let v = self.protocol_type.as_ref().expect("field protocol_type is None but not nullable at this version"); if version >= 4 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         if version >= 5 {
-            if version >= 5 { if version >= 4 { put_compact_nullable_string(buf, self.protocol_name.as_deref()) } else { put_nullable_string(buf, self.protocol_name.as_deref()) } } else { let v = self.protocol_name.as_deref().expect("field protocol_name is None but not nullable at this version"); if version >= 4 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 5 { if version >= 4 { put_compact_nullable_string(buf, self.protocol_name.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.protocol_name.as_ref().map(|v| v.as_str())) } } else { let v = self.protocol_name.as_ref().expect("field protocol_name is None but not nullable at this version"); if version >= 4 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         {
             if version >= 4 { put_compact_bytes_zc(buf, &self.assignment) } else { put_bytes_zc(buf, &self.assignment) };

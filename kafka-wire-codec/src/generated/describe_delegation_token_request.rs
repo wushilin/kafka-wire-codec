@@ -1,15 +1,17 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct DescribeDelegationTokenOwner {
     /// The owner principal type.
-    pub principal_type: Bytes,
+    pub principal_type: StrBytes,
     /// The owner principal name.
-    pub principal_name: Bytes,
+    pub principal_name: StrBytes,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -18,10 +20,10 @@ impl DescribeDelegationTokenOwner {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 2 { compact_string_size(&self.principal_type) } else { string_size(&self.principal_type) };
+            size += if version >= 2 { compact_string_size(self.principal_type.as_str()) } else { string_size(self.principal_type.as_str()) };
         }
         {
-            size += if version >= 2 { compact_string_size(&self.principal_name) } else { string_size(&self.principal_name) };
+            size += if version >= 2 { compact_string_size(self.principal_name.as_str()) } else { string_size(self.principal_name.as_str()) };
         }
         if version >= 2 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -29,10 +31,10 @@ impl DescribeDelegationTokenOwner {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 2 { put_compact_string(buf, &self.principal_type) } else { put_string(buf, &self.principal_type) };
+            if version >= 2 { put_compact_string(buf, self.principal_type.as_str()) } else { put_string(buf, self.principal_type.as_str()) };
         }
         {
-            if version >= 2 { put_compact_string(buf, &self.principal_name) } else { put_string(buf, &self.principal_name) };
+            if version >= 2 { put_compact_string(buf, self.principal_name.as_str()) } else { put_string(buf, self.principal_name.as_str()) };
         }
         if version >= 2 { put_tagged_fields(buf, &self.tagged_fields); }
     }

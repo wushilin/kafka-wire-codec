@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct AlterReplicaLogDirTopicResult {
     /// The name of the topic.
-    pub topic_name: Bytes,
+    pub topic_name: TopicName,
     /// The results for each partition.
     pub partitions: Vec<AlterReplicaLogDirPartitionResult>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl AlterReplicaLogDirTopicResult {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 2 { compact_string_size(&self.topic_name) } else { string_size(&self.topic_name) };
+            size += if version >= 2 { compact_string_size(self.topic_name.as_str()) } else { string_size(self.topic_name.as_str()) };
         }
         {
             { let arr = &self.partitions;
@@ -34,7 +36,7 @@ impl AlterReplicaLogDirTopicResult {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 2 { put_compact_string(buf, &self.topic_name) } else { put_string(buf, &self.topic_name) };
+            if version >= 2 { put_compact_string(buf, self.topic_name.as_str()) } else { put_string(buf, self.topic_name.as_str()) };
         }
         {
             { let arr = &self.partitions;
@@ -48,7 +50,7 @@ impl AlterReplicaLogDirTopicResult {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = AlterReplicaLogDirTopicResult::default();
         {
-            msg.topic_name = (if version >= 2 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.topic_name = TopicName((if version >= 2 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = if version >= 2 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };

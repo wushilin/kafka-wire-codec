@@ -1,15 +1,17 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct DescribeLogDirsResult {
     /// The error code, or 0 if there was no error.
     pub error_code: i16,
     /// The absolute log directory path.
-    pub log_dir: Bytes,
+    pub log_dir: StrBytes,
     /// The topics.
     pub topics: Vec<DescribeLogDirsTopic>,
     /// The total size in bytes of the volume the log directory is in. This value does not include the size of data stored in remote storage.
@@ -26,7 +28,7 @@ impl Default for DescribeLogDirsResult {
     fn default() -> Self {
         Self {
             error_code: 0,
-            log_dir: Bytes::new(),
+            log_dir: StrBytes::new(),
             topics: Vec::new(),
             total_bytes: -1,
             usable_bytes: -1,
@@ -43,7 +45,7 @@ impl DescribeLogDirsResult {
             size += 2;
         }
         {
-            size += if version >= 2 { compact_string_size(&self.log_dir) } else { string_size(&self.log_dir) };
+            size += if version >= 2 { compact_string_size(self.log_dir.as_str()) } else { string_size(self.log_dir.as_str()) };
         }
         {
             { let arr = &self.topics;
@@ -71,7 +73,7 @@ impl DescribeLogDirsResult {
             put_i16(buf, self.error_code);
         }
         {
-            if version >= 2 { put_compact_string(buf, &self.log_dir) } else { put_string(buf, &self.log_dir) };
+            if version >= 2 { put_compact_string(buf, self.log_dir.as_str()) } else { put_string(buf, self.log_dir.as_str()) };
         }
         {
             { let arr = &self.topics;
@@ -123,7 +125,7 @@ impl DescribeLogDirsResult {
 #[derive(Debug, Clone, Default)]
 pub struct DescribeLogDirsTopic {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The partitions.
     pub partitions: Vec<DescribeLogDirsPartition>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -134,7 +136,7 @@ impl DescribeLogDirsTopic {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 2 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 2 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         {
             { let arr = &self.partitions;
@@ -150,7 +152,7 @@ impl DescribeLogDirsTopic {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 2 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 2 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         {
             { let arr = &self.partitions;
@@ -164,7 +166,7 @@ impl DescribeLogDirsTopic {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = DescribeLogDirsTopic::default();
         {
-            msg.name = (if version >= 2 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((if version >= 2 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = if version >= 2 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };

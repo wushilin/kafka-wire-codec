@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct JoinGroupRequestProtocol {
     /// The protocol name.
-    pub name: Bytes,
+    pub name: StrBytes,
     /// The protocol metadata.
     pub metadata: Bytes,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl JoinGroupRequestProtocol {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 6 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 6 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         {
             size += if version >= 6 { compact_bytes_size(&self.metadata) } else { bytes_size(&self.metadata) };
@@ -29,7 +31,7 @@ impl JoinGroupRequestProtocol {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 6 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 6 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         {
             if version >= 6 { put_compact_bytes_zc(buf, &self.metadata) } else { put_bytes_zc(buf, &self.metadata) };
@@ -54,21 +56,21 @@ impl JoinGroupRequestProtocol {
 #[derive(Debug, Clone)]
 pub struct JoinGroupRequest {
     /// The group identifier.
-    pub group_id: Bytes,
+    pub group_id: GroupId,
     /// The coordinator considers the consumer dead if it receives no heartbeat after this timeout in milliseconds.
     pub session_timeout_ms: i32,
     /// The maximum time in milliseconds that the coordinator will wait for each member to rejoin when rebalancing the group.
     pub rebalance_timeout_ms: i32,
     /// The member id assigned by the group coordinator.
-    pub member_id: Bytes,
+    pub member_id: StrBytes,
     /// The unique identifier of the consumer instance provided by end user.
-    pub group_instance_id: Option<Bytes>,
+    pub group_instance_id: Option<StrBytes>,
     /// The unique name the for class of protocols implemented by the group we want to join.
-    pub protocol_type: Bytes,
+    pub protocol_type: StrBytes,
     /// The list of protocols that the member supports.
     pub protocols: Vec<JoinGroupRequestProtocol>,
     /// The reason why the member (re-)joins the group.
-    pub reason: Option<Bytes>,
+    pub reason: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -76,12 +78,12 @@ pub struct JoinGroupRequest {
 impl Default for JoinGroupRequest {
     fn default() -> Self {
         Self {
-            group_id: Bytes::new(),
+            group_id: GroupId::default(),
             session_timeout_ms: 0,
             rebalance_timeout_ms: -1,
-            member_id: Bytes::new(),
+            member_id: StrBytes::new(),
             group_instance_id: None,
-            protocol_type: Bytes::new(),
+            protocol_type: StrBytes::new(),
             protocols: Vec::new(),
             reason: None,
             tagged_fields: Vec::new(),
@@ -101,7 +103,7 @@ impl JoinGroupRequest {
             "unsupported version {} for api key {}", version, Self::API_KEY);
         let mut size = 0usize;
         {
-            size += if version >= 6 { compact_string_size(&self.group_id) } else { string_size(&self.group_id) };
+            size += if version >= 6 { compact_string_size(self.group_id.as_str()) } else { string_size(self.group_id.as_str()) };
         }
         {
             size += 4;
@@ -110,13 +112,13 @@ impl JoinGroupRequest {
             size += 4;
         }
         {
-            size += if version >= 6 { compact_string_size(&self.member_id) } else { string_size(&self.member_id) };
+            size += if version >= 6 { compact_string_size(self.member_id.as_str()) } else { string_size(self.member_id.as_str()) };
         }
         if version >= 5 {
-            size += if version >= 5 { if version >= 6 { compact_nullable_string_size(self.group_instance_id.as_deref()) } else { nullable_string_size(self.group_instance_id.as_deref()) } } else { let v = self.group_instance_id.as_deref().expect("field group_instance_id is None but not nullable at this version"); if version >= 6 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 5 { if version >= 6 { compact_nullable_string_size(self.group_instance_id.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.group_instance_id.as_ref().map(|v| v.as_str())) } } else { let v = self.group_instance_id.as_ref().expect("field group_instance_id is None but not nullable at this version"); if version >= 6 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         {
-            size += if version >= 6 { compact_string_size(&self.protocol_type) } else { string_size(&self.protocol_type) };
+            size += if version >= 6 { compact_string_size(self.protocol_type.as_str()) } else { string_size(self.protocol_type.as_str()) };
         }
         {
             { let arr = &self.protocols;
@@ -127,7 +129,7 @@ impl JoinGroupRequest {
             }
         }
         if version >= 8 {
-            size += if version >= 8 { if version >= 6 { compact_nullable_string_size(self.reason.as_deref()) } else { nullable_string_size(self.reason.as_deref()) } } else { let v = self.reason.as_deref().expect("field reason is None but not nullable at this version"); if version >= 6 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 8 { if version >= 6 { compact_nullable_string_size(self.reason.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.reason.as_ref().map(|v| v.as_str())) } } else { let v = self.reason.as_ref().expect("field reason is None but not nullable at this version"); if version >= 6 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         if version >= 6 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -137,7 +139,7 @@ impl JoinGroupRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            if version >= 6 { put_compact_string(buf, &self.group_id) } else { put_string(buf, &self.group_id) };
+            if version >= 6 { put_compact_string(buf, self.group_id.as_str()) } else { put_string(buf, self.group_id.as_str()) };
         }
         {
             put_i32(buf, self.session_timeout_ms);
@@ -146,13 +148,13 @@ impl JoinGroupRequest {
             put_i32(buf, self.rebalance_timeout_ms);
         }
         {
-            if version >= 6 { put_compact_string(buf, &self.member_id) } else { put_string(buf, &self.member_id) };
+            if version >= 6 { put_compact_string(buf, self.member_id.as_str()) } else { put_string(buf, self.member_id.as_str()) };
         }
         if version >= 5 {
-            if version >= 5 { if version >= 6 { put_compact_nullable_string(buf, self.group_instance_id.as_deref()) } else { put_nullable_string(buf, self.group_instance_id.as_deref()) } } else { let v = self.group_instance_id.as_deref().expect("field group_instance_id is None but not nullable at this version"); if version >= 6 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 5 { if version >= 6 { put_compact_nullable_string(buf, self.group_instance_id.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.group_instance_id.as_ref().map(|v| v.as_str())) } } else { let v = self.group_instance_id.as_ref().expect("field group_instance_id is None but not nullable at this version"); if version >= 6 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         {
-            if version >= 6 { put_compact_string(buf, &self.protocol_type) } else { put_string(buf, &self.protocol_type) };
+            if version >= 6 { put_compact_string(buf, self.protocol_type.as_str()) } else { put_string(buf, self.protocol_type.as_str()) };
         }
         {
             { let arr = &self.protocols;
@@ -161,7 +163,7 @@ impl JoinGroupRequest {
             }
         }
         if version >= 8 {
-            if version >= 8 { if version >= 6 { put_compact_nullable_string(buf, self.reason.as_deref()) } else { put_nullable_string(buf, self.reason.as_deref()) } } else { let v = self.reason.as_deref().expect("field reason is None but not nullable at this version"); if version >= 6 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 8 { if version >= 6 { put_compact_nullable_string(buf, self.reason.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.reason.as_ref().map(|v| v.as_str())) } } else { let v = self.reason.as_ref().expect("field reason is None but not nullable at this version"); if version >= 6 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         if version >= 6 { put_tagged_fields(buf, &self.tagged_fields); }
     }
@@ -172,7 +174,7 @@ impl JoinGroupRequest {
         }
         let mut msg = JoinGroupRequest::default();
         {
-            msg.group_id = (if version >= 6 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.group_id = GroupId((if version >= 6 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             msg.session_timeout_ms = get_i32(buf)?;

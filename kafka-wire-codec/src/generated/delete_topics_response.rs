@@ -1,19 +1,21 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct DeletableTopicResult {
     /// The topic name.
-    pub name: Option<Bytes>,
+    pub name: Option<TopicName>,
     /// The unique topic ID.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// The deletion error, or 0 if the deletion succeeded.
     pub error_code: i16,
     /// The error message, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -21,8 +23,8 @@ pub struct DeletableTopicResult {
 impl Default for DeletableTopicResult {
     fn default() -> Self {
         Self {
-            name: Some(Bytes::new()),
-            topic_id: [0u8; 16],
+            name: Some(TopicName::default()),
+            topic_id: Uuid::nil(),
             error_code: 0,
             error_message: None,
             tagged_fields: Vec::new(),
@@ -34,7 +36,7 @@ impl DeletableTopicResult {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 6 { if version >= 4 { compact_nullable_string_size(self.name.as_deref()) } else { nullable_string_size(self.name.as_deref()) } } else { let v = self.name.as_deref().expect("field name is None but not nullable at this version"); if version >= 4 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 6 { if version >= 4 { compact_nullable_string_size(self.name.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.name.as_ref().map(|v| v.as_str())) } } else { let v = self.name.as_ref().expect("field name is None but not nullable at this version"); if version >= 4 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         if version >= 6 {
             size += 16;
@@ -43,7 +45,7 @@ impl DeletableTopicResult {
             size += 2;
         }
         if version >= 5 {
-            size += if version >= 5 { if version >= 4 { compact_nullable_string_size(self.error_message.as_deref()) } else { nullable_string_size(self.error_message.as_deref()) } } else { let v = self.error_message.as_deref().expect("field error_message is None but not nullable at this version"); if version >= 4 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 5 { if version >= 4 { compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } } else { let v = self.error_message.as_ref().expect("field error_message is None but not nullable at this version"); if version >= 4 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         if version >= 4 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -51,7 +53,7 @@ impl DeletableTopicResult {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 6 { if version >= 4 { put_compact_nullable_string(buf, self.name.as_deref()) } else { put_nullable_string(buf, self.name.as_deref()) } } else { let v = self.name.as_deref().expect("field name is None but not nullable at this version"); if version >= 4 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 6 { if version >= 4 { put_compact_nullable_string(buf, self.name.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.name.as_ref().map(|v| v.as_str())) } } else { let v = self.name.as_ref().expect("field name is None but not nullable at this version"); if version >= 4 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         if version >= 6 {
             put_uuid(buf, &self.topic_id);
@@ -60,7 +62,7 @@ impl DeletableTopicResult {
             put_i16(buf, self.error_code);
         }
         if version >= 5 {
-            if version >= 5 { if version >= 4 { put_compact_nullable_string(buf, self.error_message.as_deref()) } else { put_nullable_string(buf, self.error_message.as_deref()) } } else { let v = self.error_message.as_deref().expect("field error_message is None but not nullable at this version"); if version >= 4 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 5 { if version >= 4 { put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } } else { let v = self.error_message.as_ref().expect("field error_message is None but not nullable at this version"); if version >= 4 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         if version >= 4 { put_tagged_fields(buf, &self.tagged_fields); }
     }
@@ -68,7 +70,7 @@ impl DeletableTopicResult {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = DeletableTopicResult::default();
         {
-            msg.name = { let v = if version >= 4 { get_compact_string(buf)? } else { get_string(buf)? }; if version >= 6 { v } else { Some(v.ok_or(DecodeError::NullForNonNullable)?) } };
+            msg.name = { let v = if version >= 4 { get_compact_string(buf)? } else { get_string(buf)? }; if version >= 6 { v } else { Some(v.ok_or(DecodeError::NullForNonNullable)?) } }.map(TopicName);
         }
         if version >= 6 {
             msg.topic_id = get_uuid(buf)?;

@@ -10,7 +10,7 @@ use kafka_wire_codec::generated::produce_request::{
     PartitionProduceData, ProduceRequest, TopicProduceData,
 };
 use kafka_wire_codec::header::RequestHeader;
-use kafka_wire_codec::{Encodable, EncodableZeroCopy};
+use kafka_wire_codec::{Encodable, EncodableZeroCopy, StrBytes};
 
 /// True if `inner` points into `outer`'s memory (i.e. shares the allocation).
 fn is_subslice(outer: &[u8], inner: &[u8]) -> bool {
@@ -24,7 +24,7 @@ fn sample_produce(records: Bytes) -> ProduceRequest {
         acks: -1,
         timeout_ms: 30_000,
         topic_data: vec![TopicProduceData {
-            name: Bytes::from_static(b"my-topic"),
+            name: "my-topic".into(),
             partition_data: vec![PartitionProduceData {
                 index: 3,
                 records: Some(records),
@@ -56,8 +56,8 @@ fn decode_is_zero_copy() {
         is_subslice(&wire, got),
         "decoded records were copied instead of sliced from the frame"
     );
-    // Topic name too.
-    assert!(is_subslice(&wire, &decoded.topic_data[0].name));
+    // Topic name too (TopicName -> StrBytes -> zero-copy slice of the frame).
+    assert!(is_subslice(&wire, decoded.topic_data[0].name.as_bytes()));
 }
 
 #[test]
@@ -123,7 +123,7 @@ fn zero_copy_frame_matches_contiguous_frame() {
         api_key: ProduceRequest::API_KEY,
         api_version: version,
         correlation_id: 7,
-        client_id: Some(Bytes::from_static(b"proxy")),
+        client_id: Some(StrBytes::from_static("proxy")),
         tagged_fields: vec![],
     };
     let records = Bytes::from(vec![0x41u8; 128 * 1024]);

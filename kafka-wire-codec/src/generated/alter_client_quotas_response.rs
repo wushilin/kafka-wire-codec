@@ -1,15 +1,17 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct EntryData {
     /// The error code, or `0` if the quota alteration succeeded.
     pub error_code: i16,
     /// The error message, or `null` if the quota alteration succeeded.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// The quota entity to alter.
     pub entity: Vec<EntityData>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -20,7 +22,7 @@ impl Default for EntryData {
     fn default() -> Self {
         Self {
             error_code: 0,
-            error_message: Some(Bytes::new()),
+            error_message: Some(StrBytes::new()),
             entity: Vec::new(),
             tagged_fields: Vec::new(),
         }
@@ -34,7 +36,7 @@ impl EntryData {
             size += 2;
         }
         {
-            size += if version >= 1 { compact_nullable_string_size(self.error_message.as_deref()) } else { nullable_string_size(self.error_message.as_deref()) };
+            size += if version >= 1 { compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) };
         }
         {
             { let arr = &self.entity;
@@ -53,7 +55,7 @@ impl EntryData {
             put_i16(buf, self.error_code);
         }
         {
-            if version >= 1 { put_compact_nullable_string(buf, self.error_message.as_deref()) } else { put_nullable_string(buf, self.error_message.as_deref()) };
+            if version >= 1 { put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) };
         }
         {
             { let arr = &self.entity;
@@ -87,9 +89,9 @@ impl EntryData {
 #[derive(Debug, Clone)]
 pub struct EntityData {
     /// The entity type.
-    pub entity_type: Bytes,
+    pub entity_type: StrBytes,
     /// The name of the entity, or null if the default.
-    pub entity_name: Option<Bytes>,
+    pub entity_name: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -97,8 +99,8 @@ pub struct EntityData {
 impl Default for EntityData {
     fn default() -> Self {
         Self {
-            entity_type: Bytes::new(),
-            entity_name: Some(Bytes::new()),
+            entity_type: StrBytes::new(),
+            entity_name: Some(StrBytes::new()),
             tagged_fields: Vec::new(),
         }
     }
@@ -108,10 +110,10 @@ impl EntityData {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 1 { compact_string_size(&self.entity_type) } else { string_size(&self.entity_type) };
+            size += if version >= 1 { compact_string_size(self.entity_type.as_str()) } else { string_size(self.entity_type.as_str()) };
         }
         {
-            size += if version >= 1 { compact_nullable_string_size(self.entity_name.as_deref()) } else { nullable_string_size(self.entity_name.as_deref()) };
+            size += if version >= 1 { compact_nullable_string_size(self.entity_name.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.entity_name.as_ref().map(|v| v.as_str())) };
         }
         if version >= 1 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -119,10 +121,10 @@ impl EntityData {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 1 { put_compact_string(buf, &self.entity_type) } else { put_string(buf, &self.entity_type) };
+            if version >= 1 { put_compact_string(buf, self.entity_type.as_str()) } else { put_string(buf, self.entity_type.as_str()) };
         }
         {
-            if version >= 1 { put_compact_nullable_string(buf, self.entity_name.as_deref()) } else { put_nullable_string(buf, self.entity_name.as_deref()) };
+            if version >= 1 { put_compact_nullable_string(buf, self.entity_name.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.entity_name.as_ref().map(|v| v.as_str())) };
         }
         if version >= 1 { put_tagged_fields(buf, &self.tagged_fields); }
     }

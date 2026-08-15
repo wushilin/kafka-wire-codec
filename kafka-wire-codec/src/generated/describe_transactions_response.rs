@@ -1,23 +1,25 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct TransactionState {
     /// The error code.
     pub error_code: i16,
     /// The transactional id.
-    pub transactional_id: Bytes,
+    pub transactional_id: TransactionalId,
     /// The current transaction state of the producer.
-    pub transaction_state: Bytes,
+    pub transaction_state: StrBytes,
     /// The timeout in milliseconds for the transaction.
     pub transaction_timeout_ms: i32,
     /// The start time of the transaction in milliseconds.
     pub transaction_start_time_ms: i64,
     /// The current producer id associated with the transaction.
-    pub producer_id: i64,
+    pub producer_id: ProducerId,
     /// The current epoch associated with the producer id.
     pub producer_epoch: i16,
     /// The set of partitions included in the current transaction (if active). When a transaction is preparing to commit or abort, this will include only partitions which do not have markers.
@@ -33,10 +35,10 @@ impl TransactionState {
             size += 2;
         }
         {
-            size += compact_string_size(&self.transactional_id);
+            size += compact_string_size(self.transactional_id.as_str());
         }
         {
-            size += compact_string_size(&self.transaction_state);
+            size += compact_string_size(self.transaction_state.as_str());
         }
         {
             size += 4;
@@ -67,10 +69,10 @@ impl TransactionState {
             put_i16(buf, self.error_code);
         }
         {
-            put_compact_string(buf, &self.transactional_id);
+            put_compact_string(buf, self.transactional_id.as_str());
         }
         {
-            put_compact_string(buf, &self.transaction_state);
+            put_compact_string(buf, self.transaction_state.as_str());
         }
         {
             put_i32(buf, self.transaction_timeout_ms);
@@ -79,7 +81,7 @@ impl TransactionState {
             put_i64(buf, self.transaction_start_time_ms);
         }
         {
-            put_i64(buf, self.producer_id);
+            put_i64(buf, self.producer_id.0);
         }
         {
             put_i16(buf, self.producer_epoch);
@@ -99,7 +101,7 @@ impl TransactionState {
             msg.error_code = get_i16(buf)?;
         }
         {
-            msg.transactional_id = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.transactional_id = TransactionalId((get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             msg.transaction_state = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
@@ -111,7 +113,7 @@ impl TransactionState {
             msg.transaction_start_time_ms = get_i64(buf)?;
         }
         {
-            msg.producer_id = get_i64(buf)?;
+            msg.producer_id = ProducerId(get_i64(buf)?);
         }
         {
             msg.producer_epoch = get_i16(buf)?;
@@ -131,7 +133,7 @@ impl TransactionState {
 #[derive(Debug, Clone, Default)]
 pub struct TopicData {
     /// The topic name.
-    pub topic: Bytes,
+    pub topic: TopicName,
     /// The partition ids included in the current transaction.
     pub partitions: Vec<i32>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -142,7 +144,7 @@ impl TopicData {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.topic);
+            size += compact_string_size(self.topic.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -156,7 +158,7 @@ impl TopicData {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.topic);
+            put_compact_string(buf, self.topic.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -170,7 +172,7 @@ impl TopicData {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = TopicData::default();
         {
-            msg.topic = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.topic = TopicName((get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };

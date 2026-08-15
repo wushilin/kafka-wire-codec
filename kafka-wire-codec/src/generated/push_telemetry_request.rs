@@ -1,14 +1,16 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 0-0.
 #[derive(Debug, Clone, Default)]
 pub struct PushTelemetryRequest {
     /// Unique id for this client instance.
-    pub client_instance_id: [u8; 16],
+    pub client_instance_id: Uuid,
     /// Unique identifier for the current subscription.
     pub subscription_id: i32,
     /// Client is terminating the connection.

@@ -1,8 +1,10 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct EntryData {
@@ -77,9 +79,9 @@ impl EntryData {
 #[derive(Debug, Clone)]
 pub struct EntityData {
     /// The entity type.
-    pub entity_type: Bytes,
+    pub entity_type: StrBytes,
     /// The name of the entity, or null if the default.
-    pub entity_name: Option<Bytes>,
+    pub entity_name: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -87,8 +89,8 @@ pub struct EntityData {
 impl Default for EntityData {
     fn default() -> Self {
         Self {
-            entity_type: Bytes::new(),
-            entity_name: Some(Bytes::new()),
+            entity_type: StrBytes::new(),
+            entity_name: Some(StrBytes::new()),
             tagged_fields: Vec::new(),
         }
     }
@@ -98,10 +100,10 @@ impl EntityData {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 1 { compact_string_size(&self.entity_type) } else { string_size(&self.entity_type) };
+            size += if version >= 1 { compact_string_size(self.entity_type.as_str()) } else { string_size(self.entity_type.as_str()) };
         }
         {
-            size += if version >= 1 { compact_nullable_string_size(self.entity_name.as_deref()) } else { nullable_string_size(self.entity_name.as_deref()) };
+            size += if version >= 1 { compact_nullable_string_size(self.entity_name.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.entity_name.as_ref().map(|v| v.as_str())) };
         }
         if version >= 1 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -109,10 +111,10 @@ impl EntityData {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 1 { put_compact_string(buf, &self.entity_type) } else { put_string(buf, &self.entity_type) };
+            if version >= 1 { put_compact_string(buf, self.entity_type.as_str()) } else { put_string(buf, self.entity_type.as_str()) };
         }
         {
-            if version >= 1 { put_compact_nullable_string(buf, self.entity_name.as_deref()) } else { put_nullable_string(buf, self.entity_name.as_deref()) };
+            if version >= 1 { put_compact_nullable_string(buf, self.entity_name.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.entity_name.as_ref().map(|v| v.as_str())) };
         }
         if version >= 1 { put_tagged_fields(buf, &self.tagged_fields); }
     }
@@ -133,7 +135,7 @@ impl EntityData {
 #[derive(Debug, Clone, Default)]
 pub struct OpData {
     /// The quota configuration key.
-    pub key: Bytes,
+    pub key: StrBytes,
     /// The value to set, otherwise ignored if the value is to be removed.
     pub value: f64,
     /// Whether the quota configuration value should be removed, otherwise set.
@@ -146,7 +148,7 @@ impl OpData {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 1 { compact_string_size(&self.key) } else { string_size(&self.key) };
+            size += if version >= 1 { compact_string_size(self.key.as_str()) } else { string_size(self.key.as_str()) };
         }
         {
             size += 8;
@@ -160,7 +162,7 @@ impl OpData {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 1 { put_compact_string(buf, &self.key) } else { put_string(buf, &self.key) };
+            if version >= 1 { put_compact_string(buf, self.key.as_str()) } else { put_string(buf, self.key.as_str()) };
         }
         {
             put_f64(buf, self.value);

@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct TopicResponse {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// Each partition in the response.
     pub partitions: Vec<PartitionResponse>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl TopicResponse {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.name);
+            size += compact_string_size(self.name.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -34,7 +36,7 @@ impl TopicResponse {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.name);
+            put_compact_string(buf, self.name.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -48,7 +50,7 @@ impl TopicResponse {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = TopicResponse::default();
         {
-            msg.name = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };
@@ -69,7 +71,7 @@ pub struct PartitionResponse {
     /// The partition error code, or 0 if there was no error.
     pub error_code: i16,
     /// The partition error message, which may be null if no additional details are available.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// The active producers for the partition.
     pub active_producers: Vec<ProducerState>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -86,7 +88,7 @@ impl PartitionResponse {
             size += 2;
         }
         {
-            size += compact_nullable_string_size(self.error_message.as_deref());
+            size += compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str()));
         }
         {
             { let arr = &self.active_producers;
@@ -108,7 +110,7 @@ impl PartitionResponse {
             put_i16(buf, self.error_code);
         }
         {
-            put_compact_nullable_string(buf, self.error_message.as_deref());
+            put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str()));
         }
         {
             { let arr = &self.active_producers;
@@ -145,7 +147,7 @@ impl PartitionResponse {
 #[derive(Debug, Clone)]
 pub struct ProducerState {
     /// The producer id.
-    pub producer_id: i64,
+    pub producer_id: ProducerId,
     /// The producer epoch.
     pub producer_epoch: i32,
     /// The last sequence number sent by the producer.
@@ -163,7 +165,7 @@ pub struct ProducerState {
 impl Default for ProducerState {
     fn default() -> Self {
         Self {
-            producer_id: 0,
+            producer_id: ProducerId::default(),
             producer_epoch: 0,
             last_sequence: -1,
             last_timestamp: -1,
@@ -201,7 +203,7 @@ impl ProducerState {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_i64(buf, self.producer_id);
+            put_i64(buf, self.producer_id.0);
         }
         {
             put_i32(buf, self.producer_epoch);
@@ -224,7 +226,7 @@ impl ProducerState {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = ProducerState::default();
         {
-            msg.producer_id = get_i64(buf)?;
+            msg.producer_id = ProducerId(get_i64(buf)?);
         }
         {
             msg.producer_epoch = get_i32(buf)?;

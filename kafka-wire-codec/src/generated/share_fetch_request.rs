@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct FetchTopic {
     /// The unique topic ID.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// The partitions to fetch.
     pub partitions: Vec<FetchPartition>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -201,7 +203,7 @@ impl AcknowledgementBatch {
 #[derive(Debug, Clone, Default)]
 pub struct ForgottenTopic {
     /// The unique topic ID.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// The partitions indexes to forget.
     pub partitions: Vec<i32>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -258,9 +260,9 @@ impl ForgottenTopic {
 #[derive(Debug, Clone)]
 pub struct ShareFetchRequest {
     /// The group identifier.
-    pub group_id: Option<Bytes>,
+    pub group_id: Option<GroupId>,
     /// The member ID.
-    pub member_id: Option<Bytes>,
+    pub member_id: Option<StrBytes>,
     /// The current share session epoch: 0 to open a share session; -1 to close it; otherwise increments for consecutive requests.
     pub share_session_epoch: i32,
     /// The maximum time in milliseconds to wait for the response.
@@ -289,7 +291,7 @@ impl Default for ShareFetchRequest {
     fn default() -> Self {
         Self {
             group_id: None,
-            member_id: Some(Bytes::new()),
+            member_id: Some(StrBytes::new()),
             share_session_epoch: 0,
             max_wait_ms: 0,
             min_bytes: 0,
@@ -317,10 +319,10 @@ impl ShareFetchRequest {
             "unsupported version {} for api key {}", version, Self::API_KEY);
         let mut size = 0usize;
         {
-            size += compact_nullable_string_size(self.group_id.as_deref());
+            size += compact_nullable_string_size(self.group_id.as_ref().map(|v| v.as_str()));
         }
         {
-            size += compact_nullable_string_size(self.member_id.as_deref());
+            size += compact_nullable_string_size(self.member_id.as_ref().map(|v| v.as_str()));
         }
         {
             size += 4;
@@ -370,10 +372,10 @@ impl ShareFetchRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            put_compact_nullable_string(buf, self.group_id.as_deref());
+            put_compact_nullable_string(buf, self.group_id.as_ref().map(|v| v.as_str()));
         }
         {
-            put_compact_nullable_string(buf, self.member_id.as_deref());
+            put_compact_nullable_string(buf, self.member_id.as_ref().map(|v| v.as_str()));
         }
         {
             put_i32(buf, self.share_session_epoch);
@@ -420,7 +422,7 @@ impl ShareFetchRequest {
         }
         let mut msg = ShareFetchRequest::default();
         {
-            msg.group_id = get_compact_string(buf)?;
+            msg.group_id = (get_compact_string(buf)?).map(GroupId);
         }
         {
             msg.member_id = get_compact_string(buf)?;

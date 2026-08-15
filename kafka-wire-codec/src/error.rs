@@ -26,6 +26,9 @@ pub enum DecodeError {
     #[error("null value for a field that is not nullable at this version")]
     NullForNonNullable,
 
+    #[error("invalid UTF-8 in string field")]
+    InvalidUtf8,
+
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }

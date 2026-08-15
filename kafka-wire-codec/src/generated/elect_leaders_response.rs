@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct ReplicaElectionResult {
     /// The topic name.
-    pub topic: Bytes,
+    pub topic: TopicName,
     /// The results for each partition.
     pub partition_result: Vec<PartitionResult>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl ReplicaElectionResult {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 2 { compact_string_size(&self.topic) } else { string_size(&self.topic) };
+            size += if version >= 2 { compact_string_size(self.topic.as_str()) } else { string_size(self.topic.as_str()) };
         }
         {
             { let arr = &self.partition_result;
@@ -34,7 +36,7 @@ impl ReplicaElectionResult {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 2 { put_compact_string(buf, &self.topic) } else { put_string(buf, &self.topic) };
+            if version >= 2 { put_compact_string(buf, self.topic.as_str()) } else { put_string(buf, self.topic.as_str()) };
         }
         {
             { let arr = &self.partition_result;
@@ -48,7 +50,7 @@ impl ReplicaElectionResult {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = ReplicaElectionResult::default();
         {
-            msg.topic = (if version >= 2 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.topic = TopicName((if version >= 2 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = if version >= 2 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };
@@ -69,7 +71,7 @@ pub struct PartitionResult {
     /// The result error, or zero if there was no error.
     pub error_code: i16,
     /// The result message, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -79,7 +81,7 @@ impl Default for PartitionResult {
         Self {
             partition_id: 0,
             error_code: 0,
-            error_message: Some(Bytes::new()),
+            error_message: Some(StrBytes::new()),
             tagged_fields: Vec::new(),
         }
     }
@@ -95,7 +97,7 @@ impl PartitionResult {
             size += 2;
         }
         {
-            size += if version >= 2 { compact_nullable_string_size(self.error_message.as_deref()) } else { nullable_string_size(self.error_message.as_deref()) };
+            size += if version >= 2 { compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) };
         }
         if version >= 2 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -109,7 +111,7 @@ impl PartitionResult {
             put_i16(buf, self.error_code);
         }
         {
-            if version >= 2 { put_compact_nullable_string(buf, self.error_message.as_deref()) } else { put_nullable_string(buf, self.error_message.as_deref()) };
+            if version >= 2 { put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) };
         }
         if version >= 2 { put_tagged_fields(buf, &self.tagged_fields); }
     }

@@ -1,17 +1,19 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct ComponentData {
     /// The entity type that the filter component applies to.
-    pub entity_type: Bytes,
+    pub entity_type: StrBytes,
     /// How to match the entity {0 = exact name, 1 = default name, 2 = any specified name}.
     pub match_type: i8,
     /// The string to match against, or null if unused for the match type.
-    pub r#match: Option<Bytes>,
+    pub r#match: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -19,9 +21,9 @@ pub struct ComponentData {
 impl Default for ComponentData {
     fn default() -> Self {
         Self {
-            entity_type: Bytes::new(),
+            entity_type: StrBytes::new(),
             match_type: 0,
-            r#match: Some(Bytes::new()),
+            r#match: Some(StrBytes::new()),
             tagged_fields: Vec::new(),
         }
     }
@@ -31,13 +33,13 @@ impl ComponentData {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 1 { compact_string_size(&self.entity_type) } else { string_size(&self.entity_type) };
+            size += if version >= 1 { compact_string_size(self.entity_type.as_str()) } else { string_size(self.entity_type.as_str()) };
         }
         {
             size += 1;
         }
         {
-            size += if version >= 1 { compact_nullable_string_size(self.r#match.as_deref()) } else { nullable_string_size(self.r#match.as_deref()) };
+            size += if version >= 1 { compact_nullable_string_size(self.r#match.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.r#match.as_ref().map(|v| v.as_str())) };
         }
         if version >= 1 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -45,13 +47,13 @@ impl ComponentData {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 1 { put_compact_string(buf, &self.entity_type) } else { put_string(buf, &self.entity_type) };
+            if version >= 1 { put_compact_string(buf, self.entity_type.as_str()) } else { put_string(buf, self.entity_type.as_str()) };
         }
         {
             put_i8(buf, self.match_type);
         }
         {
-            if version >= 1 { put_compact_nullable_string(buf, self.r#match.as_deref()) } else { put_nullable_string(buf, self.r#match.as_deref()) };
+            if version >= 1 { put_compact_nullable_string(buf, self.r#match.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.r#match.as_ref().map(|v| v.as_str())) };
         }
         if version >= 1 { put_tagged_fields(buf, &self.tagged_fields); }
     }

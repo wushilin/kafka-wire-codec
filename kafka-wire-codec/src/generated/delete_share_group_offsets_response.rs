@@ -1,19 +1,21 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct DeleteShareGroupOffsetsResponseTopic {
     /// The topic name.
-    pub topic_name: Bytes,
+    pub topic_name: TopicName,
     /// The unique topic ID.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// The topic-level error code, or 0 if there was no error.
     pub error_code: i16,
     /// The topic-level error message, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -22,7 +24,7 @@ impl DeleteShareGroupOffsetsResponseTopic {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.topic_name);
+            size += compact_string_size(self.topic_name.as_str());
         }
         {
             size += 16;
@@ -31,7 +33,7 @@ impl DeleteShareGroupOffsetsResponseTopic {
             size += 2;
         }
         {
-            size += compact_nullable_string_size(self.error_message.as_deref());
+            size += compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str()));
         }
         size += tagged_fields_size(&self.tagged_fields);
         size
@@ -39,7 +41,7 @@ impl DeleteShareGroupOffsetsResponseTopic {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.topic_name);
+            put_compact_string(buf, self.topic_name.as_str());
         }
         {
             put_uuid(buf, &self.topic_id);
@@ -48,7 +50,7 @@ impl DeleteShareGroupOffsetsResponseTopic {
             put_i16(buf, self.error_code);
         }
         {
-            put_compact_nullable_string(buf, self.error_message.as_deref());
+            put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str()));
         }
         put_tagged_fields(buf, &self.tagged_fields);
     }
@@ -56,7 +58,7 @@ impl DeleteShareGroupOffsetsResponseTopic {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = DeleteShareGroupOffsetsResponseTopic::default();
         {
-            msg.topic_name = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.topic_name = TopicName((get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             msg.topic_id = get_uuid(buf)?;
@@ -80,7 +82,7 @@ pub struct DeleteShareGroupOffsetsResponse {
     /// The top-level error code, or 0 if there was no error.
     pub error_code: i16,
     /// The top-level error message, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// The results for each topic.
     pub responses: Vec<DeleteShareGroupOffsetsResponseTopic>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -105,7 +107,7 @@ impl DeleteShareGroupOffsetsResponse {
             size += 2;
         }
         {
-            size += compact_nullable_string_size(self.error_message.as_deref());
+            size += compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str()));
         }
         {
             { let arr = &self.responses;
@@ -129,7 +131,7 @@ impl DeleteShareGroupOffsetsResponse {
             put_i16(buf, self.error_code);
         }
         {
-            put_compact_nullable_string(buf, self.error_message.as_deref());
+            put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str()));
         }
         {
             { let arr = &self.responses;

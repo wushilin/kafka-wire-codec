@@ -1,19 +1,21 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct CreatableTopicResult {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The unique topic ID.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// The error code, or 0 if there was no error.
     pub error_code: i16,
     /// The error message, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// Number of partitions of the topic.
     pub num_partitions: i32,
     /// Replication factor of the topic.
@@ -27,10 +29,10 @@ pub struct CreatableTopicResult {
 impl Default for CreatableTopicResult {
     fn default() -> Self {
         Self {
-            name: Bytes::new(),
-            topic_id: [0u8; 16],
+            name: TopicName::default(),
+            topic_id: Uuid::nil(),
             error_code: 0,
-            error_message: Some(Bytes::new()),
+            error_message: Some(StrBytes::new()),
             num_partitions: -1,
             replication_factor: -1,
             configs: Some(Vec::new()),
@@ -43,7 +45,7 @@ impl CreatableTopicResult {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 5 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 5 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         if version >= 7 {
             size += 16;
@@ -52,7 +54,7 @@ impl CreatableTopicResult {
             size += 2;
         }
         if version >= 1 {
-            size += if version >= 5 { compact_nullable_string_size(self.error_message.as_deref()) } else { nullable_string_size(self.error_message.as_deref()) };
+            size += if version >= 5 { compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) };
         }
         if version >= 5 {
             size += 4;
@@ -80,7 +82,7 @@ impl CreatableTopicResult {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 5 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 5 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         if version >= 7 {
             put_uuid(buf, &self.topic_id);
@@ -89,7 +91,7 @@ impl CreatableTopicResult {
             put_i16(buf, self.error_code);
         }
         if version >= 1 {
-            if version >= 5 { put_compact_nullable_string(buf, self.error_message.as_deref()) } else { put_nullable_string(buf, self.error_message.as_deref()) };
+            if version >= 5 { put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) };
         }
         if version >= 5 {
             put_i32(buf, self.num_partitions);
@@ -115,7 +117,7 @@ impl CreatableTopicResult {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = CreatableTopicResult::default();
         {
-            msg.name = (if version >= 5 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((if version >= 5 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         if version >= 7 {
             msg.topic_id = get_uuid(buf)?;
@@ -151,9 +153,9 @@ impl CreatableTopicResult {
 #[derive(Debug, Clone)]
 pub struct CreatableTopicConfigs {
     /// The configuration name.
-    pub name: Bytes,
+    pub name: StrBytes,
     /// The configuration value.
-    pub value: Option<Bytes>,
+    pub value: Option<StrBytes>,
     /// True if the configuration is read-only.
     pub read_only: bool,
     /// The configuration source.
@@ -167,8 +169,8 @@ pub struct CreatableTopicConfigs {
 impl Default for CreatableTopicConfigs {
     fn default() -> Self {
         Self {
-            name: Bytes::new(),
-            value: Some(Bytes::new()),
+            name: StrBytes::new(),
+            value: Some(StrBytes::new()),
             read_only: false,
             config_source: -1,
             is_sensitive: false,
@@ -181,10 +183,10 @@ impl CreatableTopicConfigs {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version >= 5 {
-            size += if version >= 5 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 5 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         if version >= 5 {
-            size += if version >= 5 { if version >= 5 { compact_nullable_string_size(self.value.as_deref()) } else { nullable_string_size(self.value.as_deref()) } } else { let v = self.value.as_deref().expect("field value is None but not nullable at this version"); if version >= 5 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 5 { if version >= 5 { compact_nullable_string_size(self.value.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.value.as_ref().map(|v| v.as_str())) } } else { let v = self.value.as_ref().expect("field value is None but not nullable at this version"); if version >= 5 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         if version >= 5 {
             size += 1;
@@ -201,10 +203,10 @@ impl CreatableTopicConfigs {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 5 {
-            if version >= 5 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 5 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         if version >= 5 {
-            if version >= 5 { if version >= 5 { put_compact_nullable_string(buf, self.value.as_deref()) } else { put_nullable_string(buf, self.value.as_deref()) } } else { let v = self.value.as_deref().expect("field value is None but not nullable at this version"); if version >= 5 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 5 { if version >= 5 { put_compact_nullable_string(buf, self.value.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.value.as_ref().map(|v| v.as_str())) } } else { let v = self.value.as_ref().expect("field value is None but not nullable at this version"); if version >= 5 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         if version >= 5 {
             put_bool(buf, self.read_only);

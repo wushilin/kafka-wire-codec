@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct OngoingTopicReassignment {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The ongoing reassignments for each partition.
     pub partitions: Vec<OngoingPartitionReassignment>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl OngoingTopicReassignment {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.name);
+            size += compact_string_size(self.name.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -34,7 +36,7 @@ impl OngoingTopicReassignment {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.name);
+            put_compact_string(buf, self.name.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -48,7 +50,7 @@ impl OngoingTopicReassignment {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = OngoingTopicReassignment::default();
         {
-            msg.name = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };
@@ -67,11 +69,11 @@ pub struct OngoingPartitionReassignment {
     /// The index of the partition.
     pub partition_index: i32,
     /// The current replica set.
-    pub replicas: Vec<i32>,
+    pub replicas: Vec<BrokerId>,
     /// The set of replicas we are currently adding.
-    pub adding_replicas: Vec<i32>,
+    pub adding_replicas: Vec<BrokerId>,
     /// The set of replicas we are currently removing.
-    pub removing_replicas: Vec<i32>,
+    pub removing_replicas: Vec<BrokerId>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -111,19 +113,19 @@ impl OngoingPartitionReassignment {
         {
             { let arr = &self.replicas;
                 put_uvarint(buf, arr.len() as u64 + 1);
-                for item in arr { put_i32(buf, *item); }
+                for item in arr { put_i32(buf, item.0); }
             }
         }
         {
             { let arr = &self.adding_replicas;
                 put_uvarint(buf, arr.len() as u64 + 1);
-                for item in arr { put_i32(buf, *item); }
+                for item in arr { put_i32(buf, item.0); }
             }
         }
         {
             { let arr = &self.removing_replicas;
                 put_uvarint(buf, arr.len() as u64 + 1);
-                for item in arr { put_i32(buf, *item); }
+                for item in arr { put_i32(buf, item.0); }
             }
         }
         put_tagged_fields(buf, &self.tagged_fields);
@@ -138,21 +140,21 @@ impl OngoingPartitionReassignment {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };
             let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
             { let mut items = Vec::with_capacity(count.min(buf.len()));
-                for _ in 0..count { items.push(get_i32(buf)?); }
+                for _ in 0..count { items.push((get_i32(buf)).map(BrokerId)?); }
             msg.replicas = items; }
         }
         {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };
             let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
             { let mut items = Vec::with_capacity(count.min(buf.len()));
-                for _ in 0..count { items.push(get_i32(buf)?); }
+                for _ in 0..count { items.push((get_i32(buf)).map(BrokerId)?); }
             msg.adding_replicas = items; }
         }
         {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };
             let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
             { let mut items = Vec::with_capacity(count.min(buf.len()));
-                for _ in 0..count { items.push(get_i32(buf)?); }
+                for _ in 0..count { items.push((get_i32(buf)).map(BrokerId)?); }
             msg.removing_replicas = items; }
         }
         msg.tagged_fields = get_tagged_fields(buf)?;
@@ -168,7 +170,7 @@ pub struct ListPartitionReassignmentsResponse {
     /// The top-level error code, or 0 if there was no error.
     pub error_code: i16,
     /// The top-level error message, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// The ongoing reassignments for each topic.
     pub topics: Vec<OngoingTopicReassignment>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -180,7 +182,7 @@ impl Default for ListPartitionReassignmentsResponse {
         Self {
             throttle_time_ms: 0,
             error_code: 0,
-            error_message: Some(Bytes::new()),
+            error_message: Some(StrBytes::new()),
             topics: Vec::new(),
             tagged_fields: Vec::new(),
         }
@@ -205,7 +207,7 @@ impl ListPartitionReassignmentsResponse {
             size += 2;
         }
         {
-            size += compact_nullable_string_size(self.error_message.as_deref());
+            size += compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str()));
         }
         {
             { let arr = &self.topics;
@@ -229,7 +231,7 @@ impl ListPartitionReassignmentsResponse {
             put_i16(buf, self.error_code);
         }
         {
-            put_compact_nullable_string(buf, self.error_message.as_deref());
+            put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str()));
         }
         {
             { let arr = &self.topics;

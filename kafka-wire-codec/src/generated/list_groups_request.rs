@@ -1,16 +1,18 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 0-5.
 #[derive(Debug, Clone, Default)]
 pub struct ListGroupsRequest {
     /// The states of the groups we want to list. If empty, all groups are returned with their state.
-    pub states_filter: Vec<Bytes>,
+    pub states_filter: Vec<StrBytes>,
     /// The types of the groups we want to list. If empty, all groups are returned with their type.
-    pub types_filter: Vec<Bytes>,
+    pub types_filter: Vec<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -30,7 +32,7 @@ impl ListGroupsRequest {
             { let arr = &self.states_filter;
                 if version >= 3 { size += uvarint_size(arr.len() as u64 + 1); } else { size += 4; }
                 for item in arr {
-                    size += if version >= 3 { compact_string_size(item) } else { string_size(item) };
+                    size += if version >= 3 { compact_string_size(item.as_str()) } else { string_size(item.as_str()) };
                 }
             }
         }
@@ -38,7 +40,7 @@ impl ListGroupsRequest {
             { let arr = &self.types_filter;
                 if version >= 3 { size += uvarint_size(arr.len() as u64 + 1); } else { size += 4; }
                 for item in arr {
-                    size += if version >= 3 { compact_string_size(item) } else { string_size(item) };
+                    size += if version >= 3 { compact_string_size(item.as_str()) } else { string_size(item.as_str()) };
                 }
             }
         }
@@ -52,13 +54,13 @@ impl ListGroupsRequest {
         if version >= 4 {
             { let arr = &self.states_filter;
                 if version >= 3 { put_uvarint(buf, arr.len() as u64 + 1); } else { put_i32(buf, arr.len() as i32); }
-                for item in arr { if version >= 3 { put_compact_string(buf, item); } else { put_string(buf, item); } }
+                for item in arr { if version >= 3 { put_compact_string(buf, item.as_str()); } else { put_string(buf, item.as_str()); } }
             }
         }
         if version >= 5 {
             { let arr = &self.types_filter;
                 if version >= 3 { put_uvarint(buf, arr.len() as u64 + 1); } else { put_i32(buf, arr.len() as i32); }
-                for item in arr { if version >= 3 { put_compact_string(buf, item); } else { put_string(buf, item); } }
+                for item in arr { if version >= 3 { put_compact_string(buf, item.as_str()); } else { put_string(buf, item.as_str()); } }
             }
         }
         if version >= 3 { put_tagged_fields(buf, &self.tagged_fields); }

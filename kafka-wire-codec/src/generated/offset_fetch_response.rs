@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct OffsetFetchResponseTopic {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The responses per partition.
     pub partitions: Vec<OffsetFetchResponsePartition>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl OffsetFetchResponseTopic {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version <= 7 {
-            size += if version >= 6 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 6 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         if version <= 7 {
             { let arr = &self.partitions;
@@ -34,7 +36,7 @@ impl OffsetFetchResponseTopic {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version <= 7 {
-            if version >= 6 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 6 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         if version <= 7 {
             { let arr = &self.partitions;
@@ -48,7 +50,7 @@ impl OffsetFetchResponseTopic {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = OffsetFetchResponseTopic::default();
         if version <= 7 {
-            msg.name = (if version >= 6 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((if version >= 6 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         if version <= 7 {
             let len_opt = if version >= 6 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };
@@ -71,7 +73,7 @@ pub struct OffsetFetchResponsePartition {
     /// The leader epoch.
     pub committed_leader_epoch: i32,
     /// The partition metadata.
-    pub metadata: Option<Bytes>,
+    pub metadata: Option<StrBytes>,
     /// The error code, or 0 if there was no error.
     pub error_code: i16,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -84,7 +86,7 @@ impl Default for OffsetFetchResponsePartition {
             partition_index: 0,
             committed_offset: 0,
             committed_leader_epoch: -1,
-            metadata: Some(Bytes::new()),
+            metadata: Some(StrBytes::new()),
             error_code: 0,
             tagged_fields: Vec::new(),
         }
@@ -104,7 +106,7 @@ impl OffsetFetchResponsePartition {
             size += 4;
         }
         if version <= 7 {
-            size += if version <= 7 { if version >= 6 { compact_nullable_string_size(self.metadata.as_deref()) } else { nullable_string_size(self.metadata.as_deref()) } } else { let v = self.metadata.as_deref().expect("field metadata is None but not nullable at this version"); if version >= 6 { compact_string_size(v) } else { string_size(v) } };
+            size += if version <= 7 { if version >= 6 { compact_nullable_string_size(self.metadata.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.metadata.as_ref().map(|v| v.as_str())) } } else { let v = self.metadata.as_ref().expect("field metadata is None but not nullable at this version"); if version >= 6 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         if version <= 7 {
             size += 2;
@@ -124,7 +126,7 @@ impl OffsetFetchResponsePartition {
             put_i32(buf, self.committed_leader_epoch);
         }
         if version <= 7 {
-            if version <= 7 { if version >= 6 { put_compact_nullable_string(buf, self.metadata.as_deref()) } else { put_nullable_string(buf, self.metadata.as_deref()) } } else { let v = self.metadata.as_deref().expect("field metadata is None but not nullable at this version"); if version >= 6 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version <= 7 { if version >= 6 { put_compact_nullable_string(buf, self.metadata.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.metadata.as_ref().map(|v| v.as_str())) } } else { let v = self.metadata.as_ref().expect("field metadata is None but not nullable at this version"); if version >= 6 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         if version <= 7 {
             put_i16(buf, self.error_code);
@@ -157,7 +159,7 @@ impl OffsetFetchResponsePartition {
 #[derive(Debug, Clone, Default)]
 pub struct OffsetFetchResponseGroup {
     /// The group ID.
-    pub group_id: Bytes,
+    pub group_id: GroupId,
     /// The responses per topic.
     pub topics: Vec<OffsetFetchResponseTopics>,
     /// The group-level error code, or 0 if there was no error.
@@ -170,7 +172,7 @@ impl OffsetFetchResponseGroup {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version >= 8 {
-            size += if version >= 6 { compact_string_size(&self.group_id) } else { string_size(&self.group_id) };
+            size += if version >= 6 { compact_string_size(self.group_id.as_str()) } else { string_size(self.group_id.as_str()) };
         }
         if version >= 8 {
             { let arr = &self.topics;
@@ -189,7 +191,7 @@ impl OffsetFetchResponseGroup {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 8 {
-            if version >= 6 { put_compact_string(buf, &self.group_id) } else { put_string(buf, &self.group_id) };
+            if version >= 6 { put_compact_string(buf, self.group_id.as_str()) } else { put_string(buf, self.group_id.as_str()) };
         }
         if version >= 8 {
             { let arr = &self.topics;
@@ -206,7 +208,7 @@ impl OffsetFetchResponseGroup {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = OffsetFetchResponseGroup::default();
         if version >= 8 {
-            msg.group_id = (if version >= 6 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.group_id = GroupId((if version >= 6 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         if version >= 8 {
             let len_opt = if version >= 6 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };
@@ -226,9 +228,9 @@ impl OffsetFetchResponseGroup {
 #[derive(Debug, Clone, Default)]
 pub struct OffsetFetchResponseTopics {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The topic ID.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// The responses per partition.
     pub partitions: Vec<OffsetFetchResponsePartitions>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -239,7 +241,7 @@ impl OffsetFetchResponseTopics {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version >= 8 && version <= 9 {
-            size += if version >= 6 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 6 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         if version >= 10 {
             size += 16;
@@ -258,7 +260,7 @@ impl OffsetFetchResponseTopics {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 8 && version <= 9 {
-            if version >= 6 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 6 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         if version >= 10 {
             put_uuid(buf, &self.topic_id);
@@ -275,7 +277,7 @@ impl OffsetFetchResponseTopics {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = OffsetFetchResponseTopics::default();
         if version >= 8 && version <= 9 {
-            msg.name = (if version >= 6 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((if version >= 6 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         if version >= 10 {
             msg.topic_id = get_uuid(buf)?;
@@ -301,7 +303,7 @@ pub struct OffsetFetchResponsePartitions {
     /// The leader epoch.
     pub committed_leader_epoch: i32,
     /// The partition metadata.
-    pub metadata: Option<Bytes>,
+    pub metadata: Option<StrBytes>,
     /// The partition-level error code, or 0 if there was no error.
     pub error_code: i16,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -314,7 +316,7 @@ impl Default for OffsetFetchResponsePartitions {
             partition_index: 0,
             committed_offset: 0,
             committed_leader_epoch: -1,
-            metadata: Some(Bytes::new()),
+            metadata: Some(StrBytes::new()),
             error_code: 0,
             tagged_fields: Vec::new(),
         }
@@ -334,7 +336,7 @@ impl OffsetFetchResponsePartitions {
             size += 4;
         }
         if version >= 8 {
-            size += if version >= 8 { if version >= 6 { compact_nullable_string_size(self.metadata.as_deref()) } else { nullable_string_size(self.metadata.as_deref()) } } else { let v = self.metadata.as_deref().expect("field metadata is None but not nullable at this version"); if version >= 6 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 8 { if version >= 6 { compact_nullable_string_size(self.metadata.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.metadata.as_ref().map(|v| v.as_str())) } } else { let v = self.metadata.as_ref().expect("field metadata is None but not nullable at this version"); if version >= 6 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         if version >= 8 {
             size += 2;
@@ -354,7 +356,7 @@ impl OffsetFetchResponsePartitions {
             put_i32(buf, self.committed_leader_epoch);
         }
         if version >= 8 {
-            if version >= 8 { if version >= 6 { put_compact_nullable_string(buf, self.metadata.as_deref()) } else { put_nullable_string(buf, self.metadata.as_deref()) } } else { let v = self.metadata.as_deref().expect("field metadata is None but not nullable at this version"); if version >= 6 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 8 { if version >= 6 { put_compact_nullable_string(buf, self.metadata.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.metadata.as_ref().map(|v| v.as_str())) } } else { let v = self.metadata.as_ref().expect("field metadata is None but not nullable at this version"); if version >= 6 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         if version >= 8 {
             put_i16(buf, self.error_code);

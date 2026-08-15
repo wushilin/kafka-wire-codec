@@ -1,18 +1,20 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 0-0.
 #[derive(Debug, Clone)]
 pub struct RemoveRaftVoterRequest {
     /// The cluster id of the request.
-    pub cluster_id: Option<Bytes>,
+    pub cluster_id: Option<StrBytes>,
     /// The replica id of the voter getting removed from the topic partition.
     pub voter_id: i32,
     /// The directory id of the voter getting removed from the topic partition.
-    pub voter_directory_id: [u8; 16],
+    pub voter_directory_id: Uuid,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -20,9 +22,9 @@ pub struct RemoveRaftVoterRequest {
 impl Default for RemoveRaftVoterRequest {
     fn default() -> Self {
         Self {
-            cluster_id: Some(Bytes::new()),
+            cluster_id: Some(StrBytes::new()),
             voter_id: 0,
-            voter_directory_id: [0u8; 16],
+            voter_directory_id: Uuid::nil(),
             tagged_fields: Vec::new(),
         }
     }
@@ -40,7 +42,7 @@ impl RemoveRaftVoterRequest {
             "unsupported version {} for api key {}", version, Self::API_KEY);
         let mut size = 0usize;
         {
-            size += compact_nullable_string_size(self.cluster_id.as_deref());
+            size += compact_nullable_string_size(self.cluster_id.as_ref().map(|v| v.as_str()));
         }
         {
             size += 4;
@@ -56,7 +58,7 @@ impl RemoveRaftVoterRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            put_compact_nullable_string(buf, self.cluster_id.as_deref());
+            put_compact_nullable_string(buf, self.cluster_id.as_ref().map(|v| v.as_str()));
         }
         {
             put_i32(buf, self.voter_id);

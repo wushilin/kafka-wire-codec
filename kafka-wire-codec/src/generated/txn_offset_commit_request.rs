@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct TxnOffsetCommitRequestTopic {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The partitions inside the topic that we want to commit offsets for.
     pub partitions: Vec<TxnOffsetCommitRequestPartition>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl TxnOffsetCommitRequestTopic {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 3 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 3 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         {
             { let arr = &self.partitions;
@@ -34,7 +36,7 @@ impl TxnOffsetCommitRequestTopic {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 3 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 3 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         {
             { let arr = &self.partitions;
@@ -48,7 +50,7 @@ impl TxnOffsetCommitRequestTopic {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = TxnOffsetCommitRequestTopic::default();
         {
-            msg.name = (if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = if version >= 3 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };
@@ -71,7 +73,7 @@ pub struct TxnOffsetCommitRequestPartition {
     /// The leader epoch of the last consumed record.
     pub committed_leader_epoch: i32,
     /// Any associated metadata the client wants to keep.
-    pub committed_metadata: Option<Bytes>,
+    pub committed_metadata: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -82,7 +84,7 @@ impl Default for TxnOffsetCommitRequestPartition {
             partition_index: 0,
             committed_offset: 0,
             committed_leader_epoch: -1,
-            committed_metadata: Some(Bytes::new()),
+            committed_metadata: Some(StrBytes::new()),
             tagged_fields: Vec::new(),
         }
     }
@@ -101,7 +103,7 @@ impl TxnOffsetCommitRequestPartition {
             size += 4;
         }
         {
-            size += if version >= 3 { compact_nullable_string_size(self.committed_metadata.as_deref()) } else { nullable_string_size(self.committed_metadata.as_deref()) };
+            size += if version >= 3 { compact_nullable_string_size(self.committed_metadata.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.committed_metadata.as_ref().map(|v| v.as_str())) };
         }
         if version >= 3 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -118,7 +120,7 @@ impl TxnOffsetCommitRequestPartition {
             put_i32(buf, self.committed_leader_epoch);
         }
         {
-            if version >= 3 { put_compact_nullable_string(buf, self.committed_metadata.as_deref()) } else { put_nullable_string(buf, self.committed_metadata.as_deref()) };
+            if version >= 3 { put_compact_nullable_string(buf, self.committed_metadata.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.committed_metadata.as_ref().map(|v| v.as_str())) };
         }
         if version >= 3 { put_tagged_fields(buf, &self.tagged_fields); }
     }
@@ -146,19 +148,19 @@ impl TxnOffsetCommitRequestPartition {
 #[derive(Debug, Clone)]
 pub struct TxnOffsetCommitRequest {
     /// The ID of the transaction.
-    pub transactional_id: Bytes,
+    pub transactional_id: TransactionalId,
     /// The ID of the group.
-    pub group_id: Bytes,
+    pub group_id: GroupId,
     /// The current producer ID in use by the transactional ID.
-    pub producer_id: i64,
+    pub producer_id: ProducerId,
     /// The current epoch associated with the producer ID.
     pub producer_epoch: i16,
     /// The generation of the consumer.
     pub generation_id: i32,
     /// The member ID assigned by the group coordinator.
-    pub member_id: Bytes,
+    pub member_id: StrBytes,
     /// The unique identifier of the consumer instance provided by end user.
-    pub group_instance_id: Option<Bytes>,
+    pub group_instance_id: Option<StrBytes>,
     /// Each topic that we want to commit offsets for.
     pub topics: Vec<TxnOffsetCommitRequestTopic>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -168,12 +170,12 @@ pub struct TxnOffsetCommitRequest {
 impl Default for TxnOffsetCommitRequest {
     fn default() -> Self {
         Self {
-            transactional_id: Bytes::new(),
-            group_id: Bytes::new(),
-            producer_id: 0,
+            transactional_id: TransactionalId::default(),
+            group_id: GroupId::default(),
+            producer_id: ProducerId::default(),
             producer_epoch: 0,
             generation_id: -1,
-            member_id: Bytes::new(),
+            member_id: StrBytes::new(),
             group_instance_id: None,
             topics: Vec::new(),
             tagged_fields: Vec::new(),
@@ -193,10 +195,10 @@ impl TxnOffsetCommitRequest {
             "unsupported version {} for api key {}", version, Self::API_KEY);
         let mut size = 0usize;
         {
-            size += if version >= 3 { compact_string_size(&self.transactional_id) } else { string_size(&self.transactional_id) };
+            size += if version >= 3 { compact_string_size(self.transactional_id.as_str()) } else { string_size(self.transactional_id.as_str()) };
         }
         {
-            size += if version >= 3 { compact_string_size(&self.group_id) } else { string_size(&self.group_id) };
+            size += if version >= 3 { compact_string_size(self.group_id.as_str()) } else { string_size(self.group_id.as_str()) };
         }
         {
             size += 8;
@@ -208,10 +210,10 @@ impl TxnOffsetCommitRequest {
             size += 4;
         }
         if version >= 3 {
-            size += if version >= 3 { compact_string_size(&self.member_id) } else { string_size(&self.member_id) };
+            size += if version >= 3 { compact_string_size(self.member_id.as_str()) } else { string_size(self.member_id.as_str()) };
         }
         if version >= 3 {
-            size += if version >= 3 { if version >= 3 { compact_nullable_string_size(self.group_instance_id.as_deref()) } else { nullable_string_size(self.group_instance_id.as_deref()) } } else { let v = self.group_instance_id.as_deref().expect("field group_instance_id is None but not nullable at this version"); if version >= 3 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 3 { if version >= 3 { compact_nullable_string_size(self.group_instance_id.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.group_instance_id.as_ref().map(|v| v.as_str())) } } else { let v = self.group_instance_id.as_ref().expect("field group_instance_id is None but not nullable at this version"); if version >= 3 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         {
             { let arr = &self.topics;
@@ -229,13 +231,13 @@ impl TxnOffsetCommitRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            if version >= 3 { put_compact_string(buf, &self.transactional_id) } else { put_string(buf, &self.transactional_id) };
+            if version >= 3 { put_compact_string(buf, self.transactional_id.as_str()) } else { put_string(buf, self.transactional_id.as_str()) };
         }
         {
-            if version >= 3 { put_compact_string(buf, &self.group_id) } else { put_string(buf, &self.group_id) };
+            if version >= 3 { put_compact_string(buf, self.group_id.as_str()) } else { put_string(buf, self.group_id.as_str()) };
         }
         {
-            put_i64(buf, self.producer_id);
+            put_i64(buf, self.producer_id.0);
         }
         {
             put_i16(buf, self.producer_epoch);
@@ -244,10 +246,10 @@ impl TxnOffsetCommitRequest {
             put_i32(buf, self.generation_id);
         }
         if version >= 3 {
-            if version >= 3 { put_compact_string(buf, &self.member_id) } else { put_string(buf, &self.member_id) };
+            if version >= 3 { put_compact_string(buf, self.member_id.as_str()) } else { put_string(buf, self.member_id.as_str()) };
         }
         if version >= 3 {
-            if version >= 3 { if version >= 3 { put_compact_nullable_string(buf, self.group_instance_id.as_deref()) } else { put_nullable_string(buf, self.group_instance_id.as_deref()) } } else { let v = self.group_instance_id.as_deref().expect("field group_instance_id is None but not nullable at this version"); if version >= 3 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 3 { if version >= 3 { put_compact_nullable_string(buf, self.group_instance_id.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.group_instance_id.as_ref().map(|v| v.as_str())) } } else { let v = self.group_instance_id.as_ref().expect("field group_instance_id is None but not nullable at this version"); if version >= 3 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         {
             { let arr = &self.topics;
@@ -264,13 +266,13 @@ impl TxnOffsetCommitRequest {
         }
         let mut msg = TxnOffsetCommitRequest::default();
         {
-            msg.transactional_id = (if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.transactional_id = TransactionalId((if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
-            msg.group_id = (if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.group_id = GroupId((if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
-            msg.producer_id = get_i64(buf)?;
+            msg.producer_id = ProducerId(get_i64(buf)?);
         }
         {
             msg.producer_epoch = get_i16(buf)?;

@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct DirectoryData {
     /// The ID of the directory.
-    pub id: [u8; 16],
+    pub id: Uuid,
     /// The list of topics and their assigned partitions.
     pub topics: Vec<TopicData>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -65,7 +67,7 @@ impl DirectoryData {
 #[derive(Debug, Clone, Default)]
 pub struct TopicData {
     /// The ID of the assigned topic.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// The list of assigned partitions.
     pub partitions: Vec<PartitionData>,
     /// Raw tagged fields (flexible versions), in ascending tag order.

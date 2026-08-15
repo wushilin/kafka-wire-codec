@@ -1,14 +1,16 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 1-1.
 #[derive(Debug, Clone, Default)]
 pub struct ShareGroupDescribeRequest {
     /// The ids of the groups to describe.
-    pub group_ids: Vec<Bytes>,
+    pub group_ids: Vec<GroupId>,
     /// Whether to include authorized operations.
     pub include_authorized_operations: bool,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -30,7 +32,7 @@ impl ShareGroupDescribeRequest {
             { let arr = &self.group_ids;
                 size += uvarint_size(arr.len() as u64 + 1);
                 for item in arr {
-                    size += compact_string_size(item);
+                    size += compact_string_size(item.as_str());
                 }
             }
         }
@@ -47,7 +49,7 @@ impl ShareGroupDescribeRequest {
         {
             { let arr = &self.group_ids;
                 put_uvarint(buf, arr.len() as u64 + 1);
-                for item in arr { put_compact_string(buf, item); }
+                for item in arr { put_compact_string(buf, item.as_str()); }
             }
         }
         {
@@ -65,7 +67,7 @@ impl ShareGroupDescribeRequest {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };
             let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
             { let mut items = Vec::with_capacity(count.min(buf.len()));
-                for _ in 0..count { items.push((get_compact_string(buf)).and_then(|o| o.ok_or(DecodeError::NullForNonNullable))?); }
+                for _ in 0..count { items.push(((get_compact_string(buf)).and_then(|o| o.ok_or(DecodeError::NullForNonNullable))).map(GroupId)?); }
             msg.group_ids = items; }
         }
         {

@@ -1,18 +1,17 @@
 //! Exercises the size-first encode path, the Encodable trait, framing helpers,
 //! and header-first / body-later decoding (the proxy pattern).
 
-use bytes::Bytes;
 use kafka_wire_codec::frame::{frame_request, read_frame};
 use kafka_wire_codec::generated::api_constants::ApiKey;
 use kafka_wire_codec::generated::api_versions_request::ApiVersionsRequest;
 use kafka_wire_codec::generated::dispatch;
 use kafka_wire_codec::header::RequestHeader;
-use kafka_wire_codec::Encodable;
+use kafka_wire_codec::{Encodable, StrBytes};
 
 fn sample() -> ApiVersionsRequest {
     ApiVersionsRequest {
-        client_software_name: Bytes::from_static(b"my-client"),
-        client_software_version: Bytes::from_static(b"1.0"),
+        client_software_name: "my-client".into(),
+        client_software_version: "1.0".into(),
         ..Default::default()
     }
 }
@@ -60,7 +59,7 @@ fn frame_request_then_header_first_decode() {
         api_key: ApiVersionsRequest::API_KEY,
         api_version: version,
         correlation_id: 42,
-        client_id: Some(Bytes::from_static(b"my-client")),
+        client_id: Some(StrBytes::from_static("my-client")),
         tagged_fields: vec![],
     };
     let req = sample();

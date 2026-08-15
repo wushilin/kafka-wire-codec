@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct AddPartitionsToTxnTopicResult {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The results for each partition.
     pub results_by_partition: Vec<AddPartitionsToTxnPartitionResult>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl AddPartitionsToTxnTopicResult {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 3 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 3 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         {
             { let arr = &self.results_by_partition;
@@ -34,7 +36,7 @@ impl AddPartitionsToTxnTopicResult {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 3 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 3 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         {
             { let arr = &self.results_by_partition;
@@ -48,7 +50,7 @@ impl AddPartitionsToTxnTopicResult {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = AddPartitionsToTxnTopicResult::default();
         {
-            msg.name = (if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = if version >= 3 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };
@@ -111,7 +113,7 @@ impl AddPartitionsToTxnPartitionResult {
 #[derive(Debug, Clone, Default)]
 pub struct AddPartitionsToTxnResult {
     /// The transactional id corresponding to the transaction.
-    pub transactional_id: Bytes,
+    pub transactional_id: TransactionalId,
     /// The results for each topic.
     pub topic_results: Vec<AddPartitionsToTxnTopicResult>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -122,7 +124,7 @@ impl AddPartitionsToTxnResult {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version >= 4 {
-            size += if version >= 3 { compact_string_size(&self.transactional_id) } else { string_size(&self.transactional_id) };
+            size += if version >= 3 { compact_string_size(self.transactional_id.as_str()) } else { string_size(self.transactional_id.as_str()) };
         }
         if version >= 4 {
             { let arr = &self.topic_results;
@@ -138,7 +140,7 @@ impl AddPartitionsToTxnResult {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 4 {
-            if version >= 3 { put_compact_string(buf, &self.transactional_id) } else { put_string(buf, &self.transactional_id) };
+            if version >= 3 { put_compact_string(buf, self.transactional_id.as_str()) } else { put_string(buf, self.transactional_id.as_str()) };
         }
         if version >= 4 {
             { let arr = &self.topic_results;
@@ -152,7 +154,7 @@ impl AddPartitionsToTxnResult {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = AddPartitionsToTxnResult::default();
         if version >= 4 {
-            msg.transactional_id = (if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.transactional_id = TransactionalId((if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         if version >= 4 {
             let len_opt = if version >= 3 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };

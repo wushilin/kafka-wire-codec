@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct WritableTxnMarker {
     /// The current producer ID.
-    pub producer_id: i64,
+    pub producer_id: ProducerId,
     /// The current epoch associated with the producer ID.
     pub producer_epoch: i16,
     /// The result of the transaction to write to the partitions (false = ABORT, true = COMMIT).
@@ -54,7 +56,7 @@ impl WritableTxnMarker {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_i64(buf, self.producer_id);
+            put_i64(buf, self.producer_id.0);
         }
         {
             put_i16(buf, self.producer_epoch);
@@ -80,7 +82,7 @@ impl WritableTxnMarker {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = WritableTxnMarker::default();
         {
-            msg.producer_id = get_i64(buf)?;
+            msg.producer_id = ProducerId(get_i64(buf)?);
         }
         {
             msg.producer_epoch = get_i16(buf)?;
@@ -109,7 +111,7 @@ impl WritableTxnMarker {
 #[derive(Debug, Clone, Default)]
 pub struct WritableTxnMarkerTopic {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The indexes of the partitions to write transaction markers for.
     pub partition_indexes: Vec<i32>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -120,7 +122,7 @@ impl WritableTxnMarkerTopic {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 1 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 1 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         {
             { let arr = &self.partition_indexes;
@@ -134,7 +136,7 @@ impl WritableTxnMarkerTopic {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 1 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 1 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         {
             { let arr = &self.partition_indexes;
@@ -148,7 +150,7 @@ impl WritableTxnMarkerTopic {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = WritableTxnMarkerTopic::default();
         {
-            msg.name = (if version >= 1 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((if version >= 1 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = if version >= 1 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };

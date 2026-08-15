@@ -112,6 +112,67 @@ pub fn read_frame_with_limit<R: Read>(reader: &mut R, max: usize) -> Result<Byte
     Ok(Bytes::from(body))
 }
 
+/// [`read_frame`] into a caller-owned buffer, enabling **buffer reuse across
+/// frames**: the frame body is appended to `buf`'s tail and split off as a
+/// zero-copy `Bytes` view.
+///
+/// Once every `Bytes` returned from a given `buf` has been dropped, the next
+/// call reclaims the full allocation — steady-state reads allocate nothing.
+/// `BytesMut` grows itself on demand, so an undersized buffer is never an
+/// error; it just pays one (amortized) regrow. Callers tracking buffer stats
+/// can inspect `buf.capacity()` between calls, and pre-size with
+/// `BytesMut::with_capacity` / `reserve`.
+///
+/// Any bytes already in `buf` are left untouched (only the tail is consumed).
+pub fn read_frame_into<R: Read>(reader: &mut R, buf: &mut BytesMut) -> Result<Bytes, DecodeError> {
+    read_frame_into_with_limit(reader, buf, DEFAULT_MAX_FRAME_SIZE)
+}
+
+/// [`read_frame_into`] with a caller-chosen frame-size cap.
+pub fn read_frame_into_with_limit<R: Read>(
+    reader: &mut R,
+    buf: &mut BytesMut,
+    max: usize,
+) -> Result<Bytes, DecodeError> {
+    let mut len_buf = [0u8; 4];
+    reader.read_exact(&mut len_buf)?;
+    let len = checked_len(i32::from_be_bytes(len_buf), max)?;
+    let start = buf.len();
+    buf.resize(start + len, 0);
+    let mut filled = 0usize;
+    while filled < len {
+        match reader.read(&mut buf[start + filled..]) {
+            Ok(0) => {
+                buf.truncate(start);
+                return Err(DecodeError::UnexpectedEof {
+                    needed: len,
+                    available: filled,
+                });
+            }
+            Ok(n) => filled += n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(e) => {
+                buf.truncate(start);
+                return Err(e.into());
+            }
+        }
+    }
+    Ok(take_frame(buf, start, len))
+}
+
+/// Detach the just-read frame (`buf[start..start+len]`) as a frozen view.
+///
+/// On the common empty-buffer path this is `split_to`, which leaves the spare
+/// capacity with `buf` — that's what makes cross-frame reuse work. (`split_off`
+/// would hand the spare capacity to the returned frame instead.)
+fn take_frame(buf: &mut BytesMut, start: usize, len: usize) -> Bytes {
+    if start == 0 {
+        buf.split_to(len).freeze()
+    } else {
+        buf.split_off(start).freeze()
+    }
+}
+
 /// Write one length-prefixed Kafka frame to a sync writer.
 pub fn write_frame<W: Write>(writer: &mut W, body: &[u8]) -> Result<(), DecodeError> {
     let len = (body.len() as i32).to_be_bytes();
@@ -231,19 +292,60 @@ pub async fn read_frame_async_with_limit<R>(
 where
     R: tokio::io::AsyncRead + Unpin,
 {
+    let mut body = BytesMut::new();
+    read_frame_into_async_with_limit(reader, &mut body, max).await
+}
+
+/// [`read_frame_async`] into a caller-owned buffer, enabling **buffer reuse
+/// across frames**: the frame body is appended to `buf`'s tail (via `read_buf`,
+/// no pre-zeroing) and split off as a zero-copy `Bytes` view.
+///
+/// Once every `Bytes` returned from a given `buf` has been dropped, the next
+/// call's `reserve` reclaims the full allocation — steady-state reads allocate
+/// nothing. `BytesMut` grows itself on demand, so an undersized buffer is never
+/// an error; it just pays one (amortized) regrow. Callers tracking buffer stats
+/// can inspect `buf.capacity()` between calls, and pre-size with
+/// `BytesMut::with_capacity` / `reserve`.
+///
+/// Any bytes already in `buf` are left untouched (only the tail is consumed).
+#[cfg(feature = "async")]
+pub async fn read_frame_into_async<R>(
+    reader: &mut R,
+    buf: &mut BytesMut,
+) -> Result<Bytes, DecodeError>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    read_frame_into_async_with_limit(reader, buf, DEFAULT_MAX_FRAME_SIZE).await
+}
+
+/// [`read_frame_into_async`] with a caller-chosen frame-size cap.
+#[cfg(feature = "async")]
+pub async fn read_frame_into_async_with_limit<R>(
+    reader: &mut R,
+    buf: &mut BytesMut,
+    max: usize,
+) -> Result<Bytes, DecodeError>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
     use tokio::io::AsyncReadExt;
     let len = checked_len(reader.read_i32().await?, max)?;
-    // `read_buf` appends into spare capacity without pre-zeroing; the `take`
-    // adapter guarantees we never read past this frame into the next one.
-    let mut body = BytesMut::with_capacity(len);
+    let start = buf.len();
+    // Reclaims the allocation when the previously returned `Bytes` views have
+    // been dropped; grows (amortized) otherwise.
+    buf.reserve(len);
+    // The `take` adapter guarantees we never read past this frame into the next.
     let mut limited = reader.take(len as u64);
-    while body.len() < len {
-        if limited.read_buf(&mut body).await? == 0 {
+    while buf.len() - start < len {
+        if limited.read_buf(buf).await? == 0 {
+            let available = buf.len() - start;
+            buf.truncate(start);
             return Err(DecodeError::UnexpectedEof {
                 needed: len,
-                available: body.len(),
+                available,
             });
         }
     }
-    Ok(body.freeze())
+    Ok(take_frame(buf, start, len))
 }

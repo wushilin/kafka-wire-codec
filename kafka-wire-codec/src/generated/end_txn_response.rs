@@ -1,8 +1,10 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 0-5.
 #[derive(Debug, Clone)]
@@ -12,7 +14,7 @@ pub struct EndTxnResponse {
     /// The error code, or 0 if there was no error.
     pub error_code: i16,
     /// The producer ID.
-    pub producer_id: i64,
+    pub producer_id: ProducerId,
     /// The current epoch associated with the producer.
     pub producer_epoch: i16,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -24,7 +26,7 @@ impl Default for EndTxnResponse {
         Self {
             throttle_time_ms: 0,
             error_code: 0,
-            producer_id: -1,
+            producer_id: ProducerId(-1),
             producer_epoch: -1,
             tagged_fields: Vec::new(),
         }
@@ -68,7 +70,7 @@ impl EndTxnResponse {
             put_i16(buf, self.error_code);
         }
         if version >= 5 {
-            put_i64(buf, self.producer_id);
+            put_i64(buf, self.producer_id.0);
         }
         if version >= 5 {
             put_i16(buf, self.producer_epoch);
@@ -88,7 +90,7 @@ impl EndTxnResponse {
             msg.error_code = get_i16(buf)?;
         }
         if version >= 5 {
-            msg.producer_id = get_i64(buf)?;
+            msg.producer_id = ProducerId(get_i64(buf)?);
         }
         if version >= 5 {
             msg.producer_epoch = get_i16(buf)?;

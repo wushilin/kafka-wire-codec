@@ -1,15 +1,17 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct AlterConfigsResource {
     /// The resource type.
     pub resource_type: i8,
     /// The resource name.
-    pub resource_name: Bytes,
+    pub resource_name: StrBytes,
     /// The configurations.
     pub configs: Vec<AlterableConfig>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -23,7 +25,7 @@ impl AlterConfigsResource {
             size += 1;
         }
         {
-            size += if version >= 1 { compact_string_size(&self.resource_name) } else { string_size(&self.resource_name) };
+            size += if version >= 1 { compact_string_size(self.resource_name.as_str()) } else { string_size(self.resource_name.as_str()) };
         }
         {
             { let arr = &self.configs;
@@ -42,7 +44,7 @@ impl AlterConfigsResource {
             put_i8(buf, self.resource_type);
         }
         {
-            if version >= 1 { put_compact_string(buf, &self.resource_name) } else { put_string(buf, &self.resource_name) };
+            if version >= 1 { put_compact_string(buf, self.resource_name.as_str()) } else { put_string(buf, self.resource_name.as_str()) };
         }
         {
             { let arr = &self.configs;
@@ -76,11 +78,11 @@ impl AlterConfigsResource {
 #[derive(Debug, Clone)]
 pub struct AlterableConfig {
     /// The configuration key name.
-    pub name: Bytes,
+    pub name: StrBytes,
     /// The type (Set, Delete, Append, Subtract) of operation.
     pub config_operation: i8,
     /// The value to set for the configuration key.
-    pub value: Option<Bytes>,
+    pub value: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -88,9 +90,9 @@ pub struct AlterableConfig {
 impl Default for AlterableConfig {
     fn default() -> Self {
         Self {
-            name: Bytes::new(),
+            name: StrBytes::new(),
             config_operation: 0,
-            value: Some(Bytes::new()),
+            value: Some(StrBytes::new()),
             tagged_fields: Vec::new(),
         }
     }
@@ -100,13 +102,13 @@ impl AlterableConfig {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 1 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 1 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         {
             size += 1;
         }
         {
-            size += if version >= 1 { compact_nullable_string_size(self.value.as_deref()) } else { nullable_string_size(self.value.as_deref()) };
+            size += if version >= 1 { compact_nullable_string_size(self.value.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.value.as_ref().map(|v| v.as_str())) };
         }
         if version >= 1 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -114,13 +116,13 @@ impl AlterableConfig {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 1 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 1 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         {
             put_i8(buf, self.config_operation);
         }
         {
-            if version >= 1 { put_compact_nullable_string(buf, self.value.as_deref()) } else { put_nullable_string(buf, self.value.as_deref()) };
+            if version >= 1 { put_compact_nullable_string(buf, self.value.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.value.as_ref().map(|v| v.as_str())) };
         }
         if version >= 1 { put_tagged_fields(buf, &self.tagged_fields); }
     }

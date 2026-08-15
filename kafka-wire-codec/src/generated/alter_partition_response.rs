@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct TopicData {
     /// The ID of the topic.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// The responses for each partition.
     pub partitions: Vec<PartitionData>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -69,11 +71,11 @@ pub struct PartitionData {
     /// The partition level error code.
     pub error_code: i16,
     /// The broker ID of the leader.
-    pub leader_id: i32,
+    pub leader_id: BrokerId,
     /// The leader epoch.
     pub leader_epoch: i32,
     /// The in-sync replica IDs.
-    pub isr: Vec<i32>,
+    pub isr: Vec<BrokerId>,
     /// 1 if the partition is recovering from an unclean leader election; 0 otherwise.
     pub leader_recovery_state: i8,
     /// The current epoch for the partition for KRaft controllers.
@@ -121,7 +123,7 @@ impl PartitionData {
             put_i16(buf, self.error_code);
         }
         {
-            put_i32(buf, self.leader_id);
+            put_i32(buf, self.leader_id.0);
         }
         {
             put_i32(buf, self.leader_epoch);
@@ -129,7 +131,7 @@ impl PartitionData {
         {
             { let arr = &self.isr;
                 put_uvarint(buf, arr.len() as u64 + 1);
-                for item in arr { put_i32(buf, *item); }
+                for item in arr { put_i32(buf, item.0); }
             }
         }
         if version >= 1 {
@@ -150,7 +152,7 @@ impl PartitionData {
             msg.error_code = get_i16(buf)?;
         }
         {
-            msg.leader_id = get_i32(buf)?;
+            msg.leader_id = BrokerId(get_i32(buf)?);
         }
         {
             msg.leader_epoch = get_i32(buf)?;
@@ -159,7 +161,7 @@ impl PartitionData {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };
             let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
             { let mut items = Vec::with_capacity(count.min(buf.len()));
-                for _ in 0..count { items.push(get_i32(buf)?); }
+                for _ in 0..count { items.push((get_i32(buf)).map(BrokerId)?); }
             msg.isr = items; }
         }
         if version >= 1 {

@@ -1,19 +1,21 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct AlterConfigsResourceResponse {
     /// The resource error code.
     pub error_code: i16,
     /// The resource error message, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// The resource type.
     pub resource_type: i8,
     /// The resource name.
-    pub resource_name: Bytes,
+    pub resource_name: StrBytes,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -22,9 +24,9 @@ impl Default for AlterConfigsResourceResponse {
     fn default() -> Self {
         Self {
             error_code: 0,
-            error_message: Some(Bytes::new()),
+            error_message: Some(StrBytes::new()),
             resource_type: 0,
-            resource_name: Bytes::new(),
+            resource_name: StrBytes::new(),
             tagged_fields: Vec::new(),
         }
     }
@@ -37,13 +39,13 @@ impl AlterConfigsResourceResponse {
             size += 2;
         }
         {
-            size += if version >= 1 { compact_nullable_string_size(self.error_message.as_deref()) } else { nullable_string_size(self.error_message.as_deref()) };
+            size += if version >= 1 { compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) };
         }
         {
             size += 1;
         }
         {
-            size += if version >= 1 { compact_string_size(&self.resource_name) } else { string_size(&self.resource_name) };
+            size += if version >= 1 { compact_string_size(self.resource_name.as_str()) } else { string_size(self.resource_name.as_str()) };
         }
         if version >= 1 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -54,13 +56,13 @@ impl AlterConfigsResourceResponse {
             put_i16(buf, self.error_code);
         }
         {
-            if version >= 1 { put_compact_nullable_string(buf, self.error_message.as_deref()) } else { put_nullable_string(buf, self.error_message.as_deref()) };
+            if version >= 1 { put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) };
         }
         {
             put_i8(buf, self.resource_type);
         }
         {
-            if version >= 1 { put_compact_string(buf, &self.resource_name) } else { put_string(buf, &self.resource_name) };
+            if version >= 1 { put_compact_string(buf, self.resource_name.as_str()) } else { put_string(buf, self.resource_name.as_str()) };
         }
         if version >= 1 { put_tagged_fields(buf, &self.tagged_fields); }
     }

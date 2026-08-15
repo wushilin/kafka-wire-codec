@@ -71,11 +71,14 @@ pub fn generate_message(spec: &MessageSpec) -> String {
 
     // Never-flexible messages fold their version guards away entirely, which
     // can leave `version` unused; bounded field ranges use the natural
-    // `version >= a && version <= b` form.
-    out.push_str("#![allow(unused_variables, clippy::manual_range_contains)]\n\n");
+    // `version >= a && version <= b` form. Not every message uses every typed
+    // import (Bytes/StrBytes/newtypes/Uuid), hence unused_imports.
+    out.push_str("#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]\n\n");
     out.push_str("use bytes::Bytes;\n");
+    out.push_str("use uuid::Uuid;\n");
     out.push_str("use crate::codec::*;\n");
-    out.push_str("use crate::error::DecodeError;\n\n");
+    out.push_str("use crate::error::DecodeError;\n");
+    out.push_str("use crate::types::*;\n\n");
 
     // Emit common/inline structs first
     for s in &structs {
@@ -180,7 +183,8 @@ fn emit_struct(
     let all_trivial = defaults.iter().all(|(_, expr)| {
         matches!(
             expr.as_str(),
-            "0" | "0.0" | "false" | "None" | "Bytes::new()" | "Vec::new()" | "[0u8; 16]"
+            "0" | "0.0" | "false" | "None" | "Bytes::new()" | "StrBytes::new()" | "Vec::new()"
+                | "Uuid::nil()"
         ) || expr.ends_with("::default()")
     });
 
@@ -432,7 +436,7 @@ fn generate_field_encode(field: &FieldSpec, flex_min: i16) -> String {
     lines.push_str(&guard_open(&guard));
 
     if is_array {
-        let elem_enc = element_encode_expr(&inner_type, "item", flex_min);
+        let elem_enc = element_encode_expr(&inner_type, "item", flex_min, newtype_for(field));
         let mut body = String::new();
         body.push_str(&format!(
             "                {}\n",
@@ -467,7 +471,13 @@ fn generate_field_encode(field: &FieldSpec, flex_min: i16) -> String {
     } else {
         lines.push_str(&format!(
             "            {};\n",
-            scalar_encode_expr(&inner_type, &fname, nguard.as_deref(), flex_min)
+            scalar_encode_expr(
+                &inner_type,
+                &fname,
+                nguard.as_deref(),
+                flex_min,
+                newtype_for(field)
+            )
         ));
     }
 
@@ -494,7 +504,7 @@ fn generate_field_decode(field: &FieldSpec, flex_min: i16) -> String {
     lines.push_str(&guard_open(&guard));
 
     if is_array {
-        let elem_dec = element_decode_expr(&inner_type, flex_min);
+        let elem_dec = element_decode_expr(&inner_type, flex_min, newtype_for(field));
         // Read the length prefix as an Option: None = null (-1 / compact 0).
         lines.push_str(&format!(
             "            let len_opt = {};\n",
@@ -535,7 +545,7 @@ fn generate_field_decode(field: &FieldSpec, flex_min: i16) -> String {
         lines.push_str(&format!(
             "            msg.{} = {};\n",
             fname,
-            scalar_decode_expr(&inner_type, nguard.as_deref(), flex_min)
+            scalar_decode_expr(&inner_type, nguard.as_deref(), flex_min, newtype_for(field))
         ));
     }
 
@@ -545,21 +555,48 @@ fn generate_field_decode(field: &FieldSpec, flex_min: i16) -> String {
 
 // ── Type mapping helpers ──────────────────────────────────────────────────────
 
+/// The entity newtype for a field, derived from the schema's `entityType`
+/// annotation — only when the wire type matches the expected base type, so an
+/// unexpected schema combination degrades to the plain type instead of
+/// generating code that doesn't compile.
+fn newtype_for(field: &FieldSpec) -> Option<&'static str> {
+    let base = if field.field_type.starts_with("[]") {
+        field.field_type[2..].trim()
+    } else {
+        field.field_type.as_str()
+    };
+    match (field.entity_type.as_deref()?, base) {
+        ("topicName", "string") => Some("TopicName"),
+        ("groupId", "string") => Some("GroupId"),
+        ("transactionalId", "string") => Some("TransactionalId"),
+        ("brokerId", "int32") => Some("BrokerId"),
+        ("producerId", "int64") => Some("ProducerId"),
+        _ => None,
+    }
+}
+
 /// Returns (rust_type, is_optional). Optionality comes ONLY from nullability —
 /// version gating is handled at runtime, with absent fields retaining their
 /// `Default` value (matching Kafka's own codegen).
 fn field_rust_type(field: &FieldSpec) -> (String, bool) {
     let is_array = field.field_type.starts_with("[]");
     let is_nullable = !field.nullable_versions.is_empty();
+    let nt = newtype_for(field);
 
     if is_array {
         // Nullable arrays are Option<Vec<T>> so null is distinct from empty.
         let elem = field.field_type[2..].trim();
-        (format!("Vec<{}>", primitive_rust_type(elem)), is_nullable)
+        let elem_ty = nt
+            .map(str::to_string)
+            .unwrap_or_else(|| primitive_rust_type(elem));
+        (format!("Vec<{}>", elem_ty), is_nullable)
     } else {
         // Any nullable non-array field is Option<T>: string/bytes/records use the
         // null length encoding; nullable structs use a presence byte (-1 = null).
-        (primitive_rust_type(&field.field_type), is_nullable)
+        let ty = nt
+            .map(str::to_string)
+            .unwrap_or_else(|| primitive_rust_type(&field.field_type));
+        (ty, is_nullable)
     }
 }
 
@@ -573,9 +610,9 @@ fn primitive_rust_type(t: &str) -> String {
         "uint32" => "u32",
         "float64" => "f64",
         "bool" => "bool",
-        "string" => "Bytes",
+        "string" => "StrBytes",
         "bytes" | "records" => "Bytes",
-        "uuid" => "[u8; 16]",
+        "uuid" => "Uuid",
         other => other, // struct type
     }
     .to_string()
@@ -611,11 +648,19 @@ fn default_value_expr(field: &FieldSpec) -> String {
         };
     }
 
+    let nt = newtype_for(field);
     match t {
-        "int8" | "int16" | "int32" | "int64" | "uint16" | "uint32" => raw
-            .filter(|s| !s.is_empty())
-            .map(|s| int_literal(&s))
-            .unwrap_or_else(|| "0".to_string()),
+        "int8" | "int16" | "int32" | "int64" | "uint16" | "uint32" => {
+            let lit = raw
+                .filter(|s| !s.is_empty())
+                .map(|s| int_literal(&s))
+                .unwrap_or_else(|| "0".to_string());
+            match nt {
+                Some(nt) if lit == "0" => format!("{}::default()", nt),
+                Some(nt) => format!("{}({})", nt, lit),
+                None => lit,
+            }
+        }
         "float64" => raw
             .map(|s| {
                 if s.contains('.') || s.contains('e') {
@@ -628,10 +673,14 @@ fn default_value_expr(field: &FieldSpec) -> String {
         "bool" => raw.unwrap_or_else(|| "false".to_string()),
         "string" => {
             let inner = match raw {
-                Some(ref s) if !is_null_default && !s.is_empty() => {
-                    format!("Bytes::from_static(b\"{}\")", escape_bytes(s))
-                }
-                _ => "Bytes::new()".to_string(),
+                Some(ref s) if !is_null_default && !s.is_empty() => match nt {
+                    Some(nt) => format!("{}::from_static(\"{}\")", nt, escape_bytes(s)),
+                    None => format!("StrBytes::from_static(\"{}\")", escape_bytes(s)),
+                },
+                _ => match nt {
+                    Some(nt) => format!("{}::default()", nt),
+                    None => "StrBytes::new()".to_string(),
+                },
             };
             if is_nullable {
                 if is_null_default {
@@ -656,7 +705,7 @@ fn default_value_expr(field: &FieldSpec) -> String {
                 "Bytes::new()".to_string()
             }
         }
-        "uuid" => "[0u8; 16]".to_string(),
+        "uuid" => "Uuid::nil()".to_string(),
         // Nullable structs default to null (matching Kafka's generated code).
         other => {
             if is_nullable {
@@ -706,21 +755,24 @@ fn scalar_size_expr(t: &str, fname: &str, nguard: Option<&str>, flex_min: i16) -
         "int64" | "float64" => "8".to_string(),
         "uuid" => "16".to_string(),
         "string" => {
+            // `.as_str()` resolves for both plain `StrBytes` fields and entity
+            // newtypes (via Deref), so string sizing is type-agnostic here.
+            let opt = format!("self.{fname}.as_ref().map(|v| v.as_str())");
             let nullable = flex_cond(
                 flex_min,
-                &format!("compact_nullable_string_size(self.{fname}.as_deref())"),
-                &format!("nullable_string_size(self.{fname}.as_deref())"),
+                &format!("compact_nullable_string_size({opt})"),
+                &format!("nullable_string_size({opt})"),
             );
             match nguard {
                 Some("true") => nullable,
                 Some(ng) => format!(
-                    "if {ng} {{ {nullable} }} else {{ let v = self.{fname}.as_deref().expect(\"field {fname} is None but not nullable at this version\"); {} }}",
-                    flex_cond(flex_min, "compact_string_size(v)", "string_size(v)")
+                    "if {ng} {{ {nullable} }} else {{ let v = self.{fname}.as_ref().expect(\"field {fname} is None but not nullable at this version\"); {} }}",
+                    flex_cond(flex_min, "compact_string_size(v.as_str())", "string_size(v.as_str())")
                 ),
                 None => flex_cond(
                     flex_min,
-                    &format!("compact_string_size(&self.{fname})"),
-                    &format!("string_size(&self.{fname})"),
+                    &format!("compact_string_size(self.{fname}.as_str())"),
+                    &format!("string_size(self.{fname}.as_str())"),
                 ),
             }
         }
@@ -754,33 +806,48 @@ fn scalar_size_expr(t: &str, fname: &str, nguard: Option<&str>, flex_min: i16) -
     }
 }
 
-fn scalar_encode_expr(t: &str, fname: &str, nguard: Option<&str>, flex_min: i16) -> String {
+fn scalar_encode_expr(
+    t: &str,
+    fname: &str,
+    nguard: Option<&str>,
+    flex_min: i16,
+    nt: Option<&str>,
+) -> String {
+    // Entity int newtypes are tuple structs; project the raw value for encode.
+    let iv = if nt.is_some() {
+        format!("self.{}.0", fname)
+    } else {
+        format!("self.{}", fname)
+    };
     match t {
-        "int8" => format!("put_i8(buf, self.{})", fname),
-        "int16" => format!("put_i16(buf, self.{})", fname),
-        "int32" => format!("put_i32(buf, self.{})", fname),
-        "int64" => format!("put_i64(buf, self.{})", fname),
-        "uint16" => format!("put_u16(buf, self.{})", fname),
-        "uint32" => format!("put_u32(buf, self.{})", fname),
+        "int8" => format!("put_i8(buf, {})", iv),
+        "int16" => format!("put_i16(buf, {})", iv),
+        "int32" => format!("put_i32(buf, {})", iv),
+        "int64" => format!("put_i64(buf, {})", iv),
+        "uint16" => format!("put_u16(buf, {})", iv),
+        "uint32" => format!("put_u32(buf, {})", iv),
         "float64" => format!("put_f64(buf, self.{})", fname),
         "bool" => format!("put_bool(buf, self.{})", fname),
         "uuid" => format!("put_uuid(buf, &self.{})", fname),
         "string" => {
+            // `.as_str()` resolves for both plain `StrBytes` fields and entity
+            // newtypes (via Deref), so string encoding is type-agnostic here.
+            let opt = format!("self.{fname}.as_ref().map(|v| v.as_str())");
             let nullable = flex_cond(
                 flex_min,
-                &format!("put_compact_nullable_string(buf, self.{fname}.as_deref())"),
-                &format!("put_nullable_string(buf, self.{fname}.as_deref())"),
+                &format!("put_compact_nullable_string(buf, {opt})"),
+                &format!("put_nullable_string(buf, {opt})"),
             );
             match nguard {
                 Some("true") => nullable,
                 Some(ng) => format!(
-                    "if {ng} {{ {nullable} }} else {{ let v = self.{fname}.as_deref().expect(\"field {fname} is None but not nullable at this version\"); {} }}",
-                    flex_cond(flex_min, "put_compact_string(buf, v)", "put_string(buf, v)")
+                    "if {ng} {{ {nullable} }} else {{ let v = self.{fname}.as_ref().expect(\"field {fname} is None but not nullable at this version\"); {} }}",
+                    flex_cond(flex_min, "put_compact_string(buf, v.as_str())", "put_string(buf, v.as_str())")
                 ),
                 None => flex_cond(
                     flex_min,
-                    &format!("put_compact_string(buf, &self.{fname})"),
-                    &format!("put_string(buf, &self.{fname})"),
+                    &format!("put_compact_string(buf, self.{fname}.as_str())"),
+                    &format!("put_string(buf, self.{fname}.as_str())"),
                 ),
             }
         }
@@ -819,12 +886,17 @@ fn scalar_encode_expr(t: &str, fname: &str, nguard: Option<&str>, flex_min: i16)
     }
 }
 
-fn scalar_decode_expr(t: &str, nguard: Option<&str>, flex_min: i16) -> String {
+fn scalar_decode_expr(t: &str, nguard: Option<&str>, flex_min: i16, nt: Option<&str>) -> String {
+    // Entity int newtypes wrap the raw decoded value.
+    let wrap_int = |e: String| match nt {
+        Some(nt) => format!("{}({})", nt, e),
+        None => e,
+    };
     match t {
         "int8" => "get_i8(buf)?".to_string(),
         "int16" => "get_i16(buf)?".to_string(),
-        "int32" => "get_i32(buf)?".to_string(),
-        "int64" => "get_i64(buf)?".to_string(),
+        "int32" => wrap_int("get_i32(buf)?".to_string()),
+        "int64" => wrap_int("get_i64(buf)?".to_string()),
         "uint16" => "get_u16(buf)?".to_string(),
         "uint32" => "get_u32(buf)?".to_string(),
         "float64" => "get_f64(buf)?".to_string(),
@@ -833,11 +905,26 @@ fn scalar_decode_expr(t: &str, nguard: Option<&str>, flex_min: i16) -> String {
         "string" => {
             let read = flex_cond(flex_min, "get_compact_string(buf)?", "get_string(buf)?");
             match nguard {
-                Some("true") => read,
-                Some(ng) => format!(
-                    "{{ let v = {read}; if {ng} {{ v }} else {{ Some(v.ok_or(DecodeError::NullForNonNullable)?) }} }}"
-                ),
-                None => format!("({read}).ok_or(DecodeError::NullForNonNullable)?"),
+                Some("true") => match nt {
+                    Some(nt) => format!("({read}).map({nt})"),
+                    None => read,
+                },
+                Some(ng) => {
+                    let opt = format!(
+                        "{{ let v = {read}; if {ng} {{ v }} else {{ Some(v.ok_or(DecodeError::NullForNonNullable)?) }} }}"
+                    );
+                    match nt {
+                        Some(nt) => format!("{opt}.map({nt})"),
+                        None => opt,
+                    }
+                }
+                None => {
+                    let val = format!("({read}).ok_or(DecodeError::NullForNonNullable)?");
+                    match nt {
+                        Some(nt) => format!("{}({})", nt, val),
+                        None => val,
+                    }
+                }
             }
         }
         "bytes" | "records" => {
@@ -872,8 +959,8 @@ fn element_size_expr(t: &str, item: &str, flex_min: i16) -> String {
         "uuid" => "16".to_string(),
         "string" => flex_cond(
             flex_min,
-            &format!("compact_string_size({item})"),
-            &format!("string_size({item})"),
+            &format!("compact_string_size({item}.as_str())"),
+            &format!("string_size({item}.as_str())"),
         ),
         "bytes" | "records" => flex_cond(
             flex_min,
@@ -884,21 +971,27 @@ fn element_size_expr(t: &str, item: &str, flex_min: i16) -> String {
     }
 }
 
-fn element_encode_expr(t: &str, item: &str, flex_min: i16) -> String {
+fn element_encode_expr(t: &str, item: &str, flex_min: i16, nt: Option<&str>) -> String {
+    // Entity int newtypes are tuple structs; project the raw value for encode.
+    let iv = if nt.is_some() {
+        format!("{}.0", item)
+    } else {
+        format!("*{}", item)
+    };
     match t {
-        "int8" => format!("put_i8(buf, *{});", item),
-        "int16" => format!("put_i16(buf, *{});", item),
-        "int32" => format!("put_i32(buf, *{});", item),
-        "int64" => format!("put_i64(buf, *{});", item),
-        "uint16" => format!("put_u16(buf, *{});", item),
-        "uint32" => format!("put_u32(buf, *{});", item),
+        "int8" => format!("put_i8(buf, {});", iv),
+        "int16" => format!("put_i16(buf, {});", iv),
+        "int32" => format!("put_i32(buf, {});", iv),
+        "int64" => format!("put_i64(buf, {});", iv),
+        "uint16" => format!("put_u16(buf, {});", iv),
+        "uint32" => format!("put_u32(buf, {});", iv),
         "float64" => format!("put_f64(buf, *{});", item),
         "bool" => format!("put_bool(buf, *{});", item),
         "uuid" => format!("put_uuid(buf, {});", item),
         "string" => flex_cond(
             flex_min,
-            &format!("put_compact_string(buf, {item});"),
-            &format!("put_string(buf, {item});"),
+            &format!("put_compact_string(buf, {item}.as_str());"),
+            &format!("put_string(buf, {item}.as_str());"),
         ),
         "bytes" | "records" => flex_cond(
             flex_min,
@@ -909,12 +1002,17 @@ fn element_encode_expr(t: &str, item: &str, flex_min: i16) -> String {
     }
 }
 
-fn element_decode_expr(t: &str, flex_min: i16) -> String {
+fn element_decode_expr(t: &str, flex_min: i16, nt: Option<&str>) -> String {
+    // Entity newtypes wrap the raw decoded value.
+    let wrap = |e: String| match nt {
+        Some(nt) => format!("({}).map({})", e, nt),
+        None => e,
+    };
     match t {
         "int8" => "get_i8(buf)".to_string(),
         "int16" => "get_i16(buf)".to_string(),
-        "int32" => "get_i32(buf)".to_string(),
-        "int64" => "get_i64(buf)".to_string(),
+        "int32" => wrap("get_i32(buf)".to_string()),
+        "int64" => wrap("get_i64(buf)".to_string()),
         "uint16" => "get_u16(buf)".to_string(),
         "uint32" => "get_u32(buf)".to_string(),
         "float64" => "get_f64(buf)".to_string(),
@@ -922,10 +1020,10 @@ fn element_decode_expr(t: &str, flex_min: i16) -> String {
         "uuid" => "get_uuid(buf)".to_string(),
         // Array elements are never nullable in Kafka schemas: a wire null here
         // is a protocol violation, not an empty value.
-        "string" => format!(
+        "string" => wrap(format!(
             "({}).and_then(|o| o.ok_or(DecodeError::NullForNonNullable))",
             flex_cond(flex_min, "get_compact_string(buf)", "get_string(buf)")
-        ),
+        )),
         "bytes" | "records" => format!(
             "({}).and_then(|o| o.ok_or(DecodeError::NullForNonNullable))",
             flex_cond(flex_min, "get_compact_bytes(buf)", "get_bytes(buf)")

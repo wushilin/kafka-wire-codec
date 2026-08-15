@@ -1,14 +1,16 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 0-6.
 #[derive(Debug, Clone, Default)]
 pub struct DescribeGroupsRequest {
     /// The names of the groups to describe.
-    pub groups: Vec<Bytes>,
+    pub groups: Vec<GroupId>,
     /// Whether to include authorized operations.
     pub include_authorized_operations: bool,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -30,7 +32,7 @@ impl DescribeGroupsRequest {
             { let arr = &self.groups;
                 if version >= 5 { size += uvarint_size(arr.len() as u64 + 1); } else { size += 4; }
                 for item in arr {
-                    size += if version >= 5 { compact_string_size(item) } else { string_size(item) };
+                    size += if version >= 5 { compact_string_size(item.as_str()) } else { string_size(item.as_str()) };
                 }
             }
         }
@@ -47,7 +49,7 @@ impl DescribeGroupsRequest {
         {
             { let arr = &self.groups;
                 if version >= 5 { put_uvarint(buf, arr.len() as u64 + 1); } else { put_i32(buf, arr.len() as i32); }
-                for item in arr { if version >= 5 { put_compact_string(buf, item); } else { put_string(buf, item); } }
+                for item in arr { if version >= 5 { put_compact_string(buf, item.as_str()); } else { put_string(buf, item.as_str()); } }
             }
         }
         if version >= 3 {
@@ -65,7 +67,7 @@ impl DescribeGroupsRequest {
             let len_opt = if version >= 5 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };
             let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
             { let mut items = Vec::with_capacity(count.min(buf.len()));
-                for _ in 0..count { items.push((if version >= 5 { get_compact_string(buf) } else { get_string(buf) }).and_then(|o| o.ok_or(DecodeError::NullForNonNullable))?); }
+                for _ in 0..count { items.push(((if version >= 5 { get_compact_string(buf) } else { get_string(buf) }).and_then(|o| o.ok_or(DecodeError::NullForNonNullable))).map(GroupId)?); }
             msg.groups = items; }
         }
         if version >= 3 {

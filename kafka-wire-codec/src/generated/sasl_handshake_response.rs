@@ -1,8 +1,10 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 0-1.
 #[derive(Debug, Clone, Default)]
@@ -10,7 +12,7 @@ pub struct SaslHandshakeResponse {
     /// The error code, or 0 if there was no error.
     pub error_code: i16,
     /// The mechanisms enabled in the server.
-    pub mechanisms: Vec<Bytes>,
+    pub mechanisms: Vec<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -33,7 +35,7 @@ impl SaslHandshakeResponse {
             { let arr = &self.mechanisms;
                 size += 4;
                 for item in arr {
-                    size += string_size(item);
+                    size += string_size(item.as_str());
                 }
             }
         }
@@ -49,7 +51,7 @@ impl SaslHandshakeResponse {
         {
             { let arr = &self.mechanisms;
                 put_i32(buf, arr.len() as i32);
-                for item in arr { put_string(buf, item); }
+                for item in arr { put_string(buf, item.as_str()); }
             }
         }
     }

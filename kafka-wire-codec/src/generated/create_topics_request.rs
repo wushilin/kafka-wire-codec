@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct CreatableTopic {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The number of partitions to create in the topic, or -1 if we are either specifying a manual partition assignment or using the default partitions.
     pub num_partitions: i32,
     /// The number of replicas to create for each partition in the topic, or -1 if we are either specifying a manual partition assignment or using the default replication factor.
@@ -24,7 +26,7 @@ impl CreatableTopic {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 5 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 5 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         {
             size += 4;
@@ -54,7 +56,7 @@ impl CreatableTopic {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 5 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 5 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         {
             put_i32(buf, self.num_partitions);
@@ -80,7 +82,7 @@ impl CreatableTopic {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = CreatableTopic::default();
         {
-            msg.name = (if version >= 5 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((if version >= 5 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             msg.num_partitions = get_i32(buf)?;
@@ -112,7 +114,7 @@ pub struct CreatableReplicaAssignment {
     /// The partition index.
     pub partition_index: i32,
     /// The brokers to place the partition on.
-    pub broker_ids: Vec<i32>,
+    pub broker_ids: Vec<BrokerId>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -140,7 +142,7 @@ impl CreatableReplicaAssignment {
         {
             { let arr = &self.broker_ids;
                 if version >= 5 { put_uvarint(buf, arr.len() as u64 + 1); } else { put_i32(buf, arr.len() as i32); }
-                for item in arr { put_i32(buf, *item); }
+                for item in arr { put_i32(buf, item.0); }
             }
         }
         if version >= 5 { put_tagged_fields(buf, &self.tagged_fields); }
@@ -155,7 +157,7 @@ impl CreatableReplicaAssignment {
             let len_opt = if version >= 5 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };
             let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
             { let mut items = Vec::with_capacity(count.min(buf.len()));
-                for _ in 0..count { items.push(get_i32(buf)?); }
+                for _ in 0..count { items.push((get_i32(buf)).map(BrokerId)?); }
             msg.broker_ids = items; }
         }
         if version >= 5 { msg.tagged_fields = get_tagged_fields(buf)?; }
@@ -166,9 +168,9 @@ impl CreatableReplicaAssignment {
 #[derive(Debug, Clone)]
 pub struct CreatableTopicConfig {
     /// The configuration name.
-    pub name: Bytes,
+    pub name: StrBytes,
     /// The configuration value.
-    pub value: Option<Bytes>,
+    pub value: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -176,8 +178,8 @@ pub struct CreatableTopicConfig {
 impl Default for CreatableTopicConfig {
     fn default() -> Self {
         Self {
-            name: Bytes::new(),
-            value: Some(Bytes::new()),
+            name: StrBytes::new(),
+            value: Some(StrBytes::new()),
             tagged_fields: Vec::new(),
         }
     }
@@ -187,10 +189,10 @@ impl CreatableTopicConfig {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 5 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 5 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         {
-            size += if version >= 5 { compact_nullable_string_size(self.value.as_deref()) } else { nullable_string_size(self.value.as_deref()) };
+            size += if version >= 5 { compact_nullable_string_size(self.value.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.value.as_ref().map(|v| v.as_str())) };
         }
         if version >= 5 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -198,10 +200,10 @@ impl CreatableTopicConfig {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 5 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 5 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         {
-            if version >= 5 { put_compact_nullable_string(buf, self.value.as_deref()) } else { put_nullable_string(buf, self.value.as_deref()) };
+            if version >= 5 { put_compact_nullable_string(buf, self.value.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.value.as_ref().map(|v| v.as_str())) };
         }
         if version >= 5 { put_tagged_fields(buf, &self.tagged_fields); }
     }

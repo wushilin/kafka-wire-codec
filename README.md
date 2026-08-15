@@ -17,12 +17,19 @@ Generated from Kafka **4.3.1**.
 2. **Stream-friendly and byte-array-friendly.** Decode from an `std::io::Read` /
    `tokio::io::AsyncRead` stream, or directly from an in-memory `Bytes`.
 3. **Best-effort zero copy.** Decoding borrows string/bytes/records fields as
-   ref-counted `Bytes` slices of the source buffer — no allocation or copy.
+   ref-counted slices of the source buffer — no allocation or copy. Frame reads
+   can reuse a caller-owned buffer (`read_frame_into[_async]`) for steady-state
+   zero-allocation receive loops.
 4. **Simple APIs.** Decode a header, inspect it, then decode (or forward) the body.
-   A generated dispatch table round-trips any `(api_key, version)` without
-   hand-written match arms.
+   The generated `RequestKind`/`ResponseKind` enums decode any `(api_key, version)`
+   into a typed message without hand-written match arms.
 5. **Size-first encoding.** Encoders compute the exact wire size first, allocate
    once, and write — no reallocation; the buffer flushes to a socket in one write.
+6. **Typed fields.** `string` fields are `StrBytes` (zero-copy, UTF-8 validated
+   once at decode — `.as_str()` is free), `uuid` fields are `uuid::Uuid`, and the
+   schemas' `entityType` annotations become newtypes (`TopicName`, `GroupId`,
+   `TransactionalId`, `BrokerId`, `ProducerId`) so ids of different kinds can't be
+   mixed up silently.
 
 ## Workspace layout
 
@@ -33,7 +40,8 @@ kafka-wire-codec/   Runtime crate (published to crates.io as `kafka-wire-codec`)
   src/frame/        Length-prefix framing (sync + async) + EncodedFrame
   src/header.rs     RequestHeader / ResponseHeader
   src/message.rs    Encodable trait (generic, size-first encoding)
-  src/generated/    GENERATED — one module per message + dispatch.rs + KAFKA_VERSION
+  src/types.rs      StrBytes + entity newtypes (TopicName, GroupId, BrokerId, …)
+  src/generated/    GENERATED — one module per message + dispatch.rs + kinds.rs + KAFKA_VERSION
 compat-tests/       Java fixture generator (kafka-clients) for the compat test
 scripts/regen.sh    Clean → fetch schemas → regenerate → retest
 ```
@@ -80,11 +88,18 @@ frame.write_to(&mut std::io::stdout())?;          // sync
 Decoding, header-first then body:
 
 ```rust
-use kafka_wire_codec::frame::read_frame;
+use kafka_wire_codec::frame::read_frame_into;
 use kafka_wire_codec::header::RequestHeader;
 use kafka_wire_codec::generated::dispatch;
+use kafka_wire_codec::RequestKind;
 
-let mut body: bytes::Bytes = read_frame(&mut stream)?;   // one frame, one allocation
+// A caller-owned read buffer, reused across frames: once the previous frame's
+// `Bytes` views are dropped, the next read reclaims the allocation — a
+// steady-state receive loop allocates nothing. (BytesMut grows itself if a
+// frame is bigger than the current capacity, so undersizing is never an error.)
+let mut read_buf = bytes::BytesMut::with_capacity(64 * 1024);
+let mut body: bytes::Bytes = read_frame_into(&mut stream, &mut read_buf)?;
+// async: frame::read_frame_into_async(&mut socket, &mut read_buf).await?
 
 // The first 4 bytes are api_key + api_version; derive the header version from them.
 let api_key = i16::from_be_bytes([body[0], body[1]]);
@@ -94,8 +109,29 @@ let header_version = dispatch::request_header_version(api_key, api_version).unwr
 // Decode just the header; `body` is left as a zero-copy slice of the remaining bytes.
 let header = RequestHeader::decode(&mut body, header_version)?;
 
-// A proxy can stop here and forward `body` untouched, or decode it on demand:
-let reencoded = dispatch::roundtrip(header.api_key, true, header.api_version, &body)?;
+// A proxy can stop here and forward `body` untouched — or decode it into a
+// typed message with the generated dispatch enum (no hand-written match):
+let request = RequestKind::decode(header.api_key, header.api_version, &mut body)?;
+match request {
+    RequestKind::Produce(p) => { /* p is a ProduceRequest */ }
+    RequestKind::Fetch(f) => { /* f is a FetchRequest */ }
+    other => println!("{} (api key {})", other.name(), other.api_key()),
+}
+```
+
+### Typed fields
+
+```rust
+use kafka_wire_codec::{StrBytes, TopicName, BrokerId, Uuid};
+
+// string fields are StrBytes: zero-copy slices of the frame, UTF-8 validated
+// once at decode time — as_str() is free, and Deref gives you &str ergonomics.
+let name: &str = &decoded.topic_data[0].name;           // TopicName -> StrBytes -> str
+
+// entityType-annotated fields are newtypes; uuid fields are uuid::Uuid.
+let topic = TopicName::from_static("events");
+let broker: BrokerId = 3.into();
+let topic_id: Uuid = metadata.topics[0].topic_id;       // real Uuid, not [u8; 16]
 ```
 
 ## Versioning model
@@ -170,17 +206,19 @@ cargo test --test compat            # builds fixtures via Maven, then verifies
 SKIP_COMPAT_TESTS=1 cargo test      # skip (no Java/Maven available)
 ```
 
-Current status: **630 records, 0 failed** against `kafka-clients:4.3.1`.
+Current status: **964 records, 0 failed** against `kafka-clients:4.3.1`.
 
 Requires JDK 11+ and Maven on `PATH`.
 
 ## Performance characteristics
 
-**Decode — zero copy.** `string`, `bytes`, and `records` fields decode to `Bytes`
-slices that share the source buffer's allocation (via `Bytes::split_to`); there is
-no per-field copy. A frame is read with a single allocation; the header can be
-decoded while the body remains a borrowed slice for deferred decoding or
-pass-through.
+**Decode — zero copy.** `string` fields decode to `StrBytes` and `bytes`/`records`
+fields to `Bytes` — both are slices sharing the source buffer's allocation (via
+`Bytes::split_to`); there is no per-field copy (UTF-8 is validated in place, once).
+A frame is read with a single allocation — or **zero** allocations in steady state
+with `read_frame_into[_async]`, which appends into a caller-owned `BytesMut` and
+reclaims it once the previous frame's views are dropped. The header can be decoded
+while the body remains a borrowed slice for deferred decoding or pass-through.
 
 **Encode — size-first, single allocation.** `encoded_size()` computes the exact
 size, then `encode()` writes into one exact-capacity `BytesMut` (no reallocation),

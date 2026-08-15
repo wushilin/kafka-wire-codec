@@ -1,5 +1,6 @@
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::StrBytes;
 use bytes::Bytes;
 
 /// Decoded request header (all fields, all header versions).
@@ -9,7 +10,7 @@ pub struct RequestHeader {
     pub api_version: i16,
     pub correlation_id: i32,
     /// Present in header versions >= 1.
-    pub client_id: Option<Bytes>,
+    pub client_id: Option<StrBytes>,
     /// Present in header versions >= 2 (flexible).
     pub tagged_fields: Vec<(u32, Bytes)>,
 }

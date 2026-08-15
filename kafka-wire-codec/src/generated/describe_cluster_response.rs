@@ -1,19 +1,21 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct DescribeClusterBroker {
     /// The broker ID.
-    pub broker_id: i32,
+    pub broker_id: BrokerId,
     /// The broker hostname.
-    pub host: Bytes,
+    pub host: StrBytes,
     /// The broker port.
     pub port: i32,
     /// The rack of the broker, or null if it has not been assigned to a rack.
-    pub rack: Option<Bytes>,
+    pub rack: Option<StrBytes>,
     /// Whether the broker is fenced
     pub is_fenced: bool,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -27,13 +29,13 @@ impl DescribeClusterBroker {
             size += 4;
         }
         {
-            size += compact_string_size(&self.host);
+            size += compact_string_size(self.host.as_str());
         }
         {
             size += 4;
         }
         {
-            size += compact_nullable_string_size(self.rack.as_deref());
+            size += compact_nullable_string_size(self.rack.as_ref().map(|v| v.as_str()));
         }
         if version >= 2 {
             size += 1;
@@ -44,16 +46,16 @@ impl DescribeClusterBroker {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_i32(buf, self.broker_id);
+            put_i32(buf, self.broker_id.0);
         }
         {
-            put_compact_string(buf, &self.host);
+            put_compact_string(buf, self.host.as_str());
         }
         {
             put_i32(buf, self.port);
         }
         {
-            put_compact_nullable_string(buf, self.rack.as_deref());
+            put_compact_nullable_string(buf, self.rack.as_ref().map(|v| v.as_str()));
         }
         if version >= 2 {
             put_bool(buf, self.is_fenced);
@@ -64,7 +66,7 @@ impl DescribeClusterBroker {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = DescribeClusterBroker::default();
         {
-            msg.broker_id = get_i32(buf)?;
+            msg.broker_id = BrokerId(get_i32(buf)?);
         }
         {
             msg.host = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
@@ -91,13 +93,13 @@ pub struct DescribeClusterResponse {
     /// The top-level error code, or 0 if there was no error.
     pub error_code: i16,
     /// The top-level error message, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// The endpoint type that was described. 1=brokers, 2=controllers.
     pub endpoint_type: i8,
     /// The cluster ID that responding broker belongs to.
-    pub cluster_id: Bytes,
+    pub cluster_id: StrBytes,
     /// The ID of the controller. When handled by a controller, returns the current voter leader ID. When handled by a broker, returns a random alive broker ID as a fallback.
-    pub controller_id: i32,
+    pub controller_id: BrokerId,
     /// Each broker in the response.
     pub brokers: Vec<DescribeClusterBroker>,
     /// 32-bit bitfield to represent authorized operations for this cluster.
@@ -113,8 +115,8 @@ impl Default for DescribeClusterResponse {
             error_code: 0,
             error_message: None,
             endpoint_type: 1,
-            cluster_id: Bytes::new(),
-            controller_id: -1,
+            cluster_id: StrBytes::new(),
+            controller_id: BrokerId(-1),
             brokers: Vec::new(),
             cluster_authorized_operations: -2147483648,
             tagged_fields: Vec::new(),
@@ -140,13 +142,13 @@ impl DescribeClusterResponse {
             size += 2;
         }
         {
-            size += compact_nullable_string_size(self.error_message.as_deref());
+            size += compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str()));
         }
         if version >= 1 {
             size += 1;
         }
         {
-            size += compact_string_size(&self.cluster_id);
+            size += compact_string_size(self.cluster_id.as_str());
         }
         {
             size += 4;
@@ -176,16 +178,16 @@ impl DescribeClusterResponse {
             put_i16(buf, self.error_code);
         }
         {
-            put_compact_nullable_string(buf, self.error_message.as_deref());
+            put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str()));
         }
         if version >= 1 {
             put_i8(buf, self.endpoint_type);
         }
         {
-            put_compact_string(buf, &self.cluster_id);
+            put_compact_string(buf, self.cluster_id.as_str());
         }
         {
-            put_i32(buf, self.controller_id);
+            put_i32(buf, self.controller_id.0);
         }
         {
             { let arr = &self.brokers;
@@ -220,7 +222,7 @@ impl DescribeClusterResponse {
             msg.cluster_id = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
         }
         {
-            msg.controller_id = get_i32(buf)?;
+            msg.controller_id = BrokerId(get_i32(buf)?);
         }
         {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };

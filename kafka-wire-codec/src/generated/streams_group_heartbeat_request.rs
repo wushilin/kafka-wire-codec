@@ -1,15 +1,17 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct KeyValue {
     /// key of the config
-    pub key: Bytes,
+    pub key: StrBytes,
     /// value of the config
-    pub value: Bytes,
+    pub value: StrBytes,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -18,10 +20,10 @@ impl KeyValue {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.key);
+            size += compact_string_size(self.key.as_str());
         }
         {
-            size += compact_string_size(&self.value);
+            size += compact_string_size(self.value.as_str());
         }
         size += tagged_fields_size(&self.tagged_fields);
         size
@@ -29,10 +31,10 @@ impl KeyValue {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.key);
+            put_compact_string(buf, self.key.as_str());
         }
         {
-            put_compact_string(buf, &self.value);
+            put_compact_string(buf, self.value.as_str());
         }
         put_tagged_fields(buf, &self.tagged_fields);
     }
@@ -53,7 +55,7 @@ impl KeyValue {
 #[derive(Debug, Clone, Default)]
 pub struct TopicInfo {
     /// The name of the topic.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The number of partitions in the topic. Can be 0 if no specific number of partitions is enforced. Always 0 for changelog topics.
     pub partitions: i32,
     /// The replication factor of the topic. Can be 0 if the default replication factor should be used.
@@ -68,7 +70,7 @@ impl TopicInfo {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.name);
+            size += compact_string_size(self.name.as_str());
         }
         {
             size += 4;
@@ -90,7 +92,7 @@ impl TopicInfo {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.name);
+            put_compact_string(buf, self.name.as_str());
         }
         {
             put_i32(buf, self.partitions);
@@ -110,7 +112,7 @@ impl TopicInfo {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = TopicInfo::default();
         {
-            msg.name = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             msg.partitions = get_i32(buf)?;
@@ -133,7 +135,7 @@ impl TopicInfo {
 #[derive(Debug, Clone, Default)]
 pub struct Endpoint {
     /// host of the endpoint
-    pub host: Bytes,
+    pub host: StrBytes,
     /// port of the endpoint
     pub port: u16,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -144,7 +146,7 @@ impl Endpoint {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.host);
+            size += compact_string_size(self.host.as_str());
         }
         {
             size += 2;
@@ -155,7 +157,7 @@ impl Endpoint {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.host);
+            put_compact_string(buf, self.host.as_str());
         }
         {
             put_u16(buf, self.port);
@@ -179,7 +181,7 @@ impl Endpoint {
 #[derive(Debug, Clone, Default)]
 pub struct TaskOffset {
     /// The subtopology identifier.
-    pub subtopology_id: Bytes,
+    pub subtopology_id: StrBytes,
     /// The partition.
     pub partition: i32,
     /// The offset.
@@ -192,7 +194,7 @@ impl TaskOffset {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.subtopology_id);
+            size += compact_string_size(self.subtopology_id.as_str());
         }
         {
             size += 4;
@@ -206,7 +208,7 @@ impl TaskOffset {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.subtopology_id);
+            put_compact_string(buf, self.subtopology_id.as_str());
         }
         {
             put_i32(buf, self.partition);
@@ -236,7 +238,7 @@ impl TaskOffset {
 #[derive(Debug, Clone, Default)]
 pub struct TaskIds {
     /// The subtopology identifier.
-    pub subtopology_id: Bytes,
+    pub subtopology_id: StrBytes,
     /// The partitions of the input topics processed by this member.
     pub partitions: Vec<i32>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -247,7 +249,7 @@ impl TaskIds {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.subtopology_id);
+            size += compact_string_size(self.subtopology_id.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -261,7 +263,7 @@ impl TaskIds {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.subtopology_id);
+            put_compact_string(buf, self.subtopology_id.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -350,15 +352,15 @@ impl Topology {
 #[derive(Debug, Clone, Default)]
 pub struct Subtopology {
     /// String to uniquely identify the subtopology. Deterministically generated from the topology
-    pub subtopology_id: Bytes,
+    pub subtopology_id: StrBytes,
     /// The topics the topology reads from.
-    pub source_topics: Vec<Bytes>,
+    pub source_topics: Vec<TopicName>,
     /// The regular expressions identifying topics the subtopology reads from.
-    pub source_topic_regex: Vec<Bytes>,
+    pub source_topic_regex: Vec<StrBytes>,
     /// The set of state changelog topics associated with this subtopology. Created automatically.
     pub state_changelog_topics: Vec<TopicInfo>,
     /// The repartition topics the subtopology writes to.
-    pub repartition_sink_topics: Vec<Bytes>,
+    pub repartition_sink_topics: Vec<TopicName>,
     /// The set of source topics that are internally created repartition topics. Created automatically.
     pub repartition_source_topics: Vec<TopicInfo>,
     /// A subset of source topics that must be copartitioned.
@@ -371,13 +373,13 @@ impl Subtopology {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.subtopology_id);
+            size += compact_string_size(self.subtopology_id.as_str());
         }
         {
             { let arr = &self.source_topics;
                 size += uvarint_size(arr.len() as u64 + 1);
                 for item in arr {
-                    size += compact_string_size(item);
+                    size += compact_string_size(item.as_str());
                 }
             }
         }
@@ -385,7 +387,7 @@ impl Subtopology {
             { let arr = &self.source_topic_regex;
                 size += uvarint_size(arr.len() as u64 + 1);
                 for item in arr {
-                    size += compact_string_size(item);
+                    size += compact_string_size(item.as_str());
                 }
             }
         }
@@ -401,7 +403,7 @@ impl Subtopology {
             { let arr = &self.repartition_sink_topics;
                 size += uvarint_size(arr.len() as u64 + 1);
                 for item in arr {
-                    size += compact_string_size(item);
+                    size += compact_string_size(item.as_str());
                 }
             }
         }
@@ -427,18 +429,18 @@ impl Subtopology {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.subtopology_id);
+            put_compact_string(buf, self.subtopology_id.as_str());
         }
         {
             { let arr = &self.source_topics;
                 put_uvarint(buf, arr.len() as u64 + 1);
-                for item in arr { put_compact_string(buf, item); }
+                for item in arr { put_compact_string(buf, item.as_str()); }
             }
         }
         {
             { let arr = &self.source_topic_regex;
                 put_uvarint(buf, arr.len() as u64 + 1);
-                for item in arr { put_compact_string(buf, item); }
+                for item in arr { put_compact_string(buf, item.as_str()); }
             }
         }
         {
@@ -450,7 +452,7 @@ impl Subtopology {
         {
             { let arr = &self.repartition_sink_topics;
                 put_uvarint(buf, arr.len() as u64 + 1);
-                for item in arr { put_compact_string(buf, item); }
+                for item in arr { put_compact_string(buf, item.as_str()); }
             }
         }
         {
@@ -477,7 +479,7 @@ impl Subtopology {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };
             let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
             { let mut items = Vec::with_capacity(count.min(buf.len()));
-                for _ in 0..count { items.push((get_compact_string(buf)).and_then(|o| o.ok_or(DecodeError::NullForNonNullable))?); }
+                for _ in 0..count { items.push(((get_compact_string(buf)).and_then(|o| o.ok_or(DecodeError::NullForNonNullable))).map(TopicName)?); }
             msg.source_topics = items; }
         }
         {
@@ -498,7 +500,7 @@ impl Subtopology {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };
             let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
             { let mut items = Vec::with_capacity(count.min(buf.len()));
-                for _ in 0..count { items.push((get_compact_string(buf)).and_then(|o| o.ok_or(DecodeError::NullForNonNullable))?); }
+                for _ in 0..count { items.push(((get_compact_string(buf)).and_then(|o| o.ok_or(DecodeError::NullForNonNullable))).map(TopicName)?); }
             msg.repartition_sink_topics = items; }
         }
         {
@@ -611,17 +613,17 @@ impl CopartitionGroup {
 #[derive(Debug, Clone)]
 pub struct StreamsGroupHeartbeatRequest {
     /// The group identifier.
-    pub group_id: Bytes,
+    pub group_id: GroupId,
     /// The member ID generated by the streams consumer. The member ID must be kept during the entire lifetime of the streams consumer process.
-    pub member_id: Bytes,
+    pub member_id: StrBytes,
     /// The current member epoch; 0 to join the group; -1 to leave the group; -2 to indicate that the static member will rejoin.
     pub member_epoch: i32,
     /// The current endpoint epoch of this client, represents the latest endpoint epoch this client received
     pub endpoint_information_epoch: i32,
     /// null if not provided or if it didn't change since the last heartbeat; the instance ID for static membership otherwise.
-    pub instance_id: Option<Bytes>,
+    pub instance_id: Option<StrBytes>,
     /// null if not provided or if it didn't change since the last heartbeat; the rack ID of the member otherwise.
-    pub rack_id: Option<Bytes>,
+    pub rack_id: Option<StrBytes>,
     /// -1 if it didn't change since the last heartbeat; the maximum time in milliseconds that the coordinator will wait on the member to revoke its tasks otherwise.
     pub rebalance_timeout_ms: i32,
     /// The topology metadata of the streams application. Used to initialize the topology of the group and to check if the topology corresponds to the topology initialized for the group. Only sent when memberEpoch = 0, must be non-empty. Null otherwise.
@@ -633,7 +635,7 @@ pub struct StreamsGroupHeartbeatRequest {
     /// Currently owned warm-up tasks for this client. Null if unchanged since last heartbeat.
     pub warmup_tasks: Option<Vec<TaskIds>>,
     /// Identity of the streams instance that may have multiple consumers. Null if unchanged since last heartbeat.
-    pub process_id: Option<Bytes>,
+    pub process_id: Option<StrBytes>,
     /// User-defined endpoint for Interactive Queries. Null if unchanged since last heartbeat, or if not defined on the client.
     pub user_endpoint: Option<Endpoint>,
     /// Used for rack-aware assignment algorithm. Null if unchanged since last heartbeat.
@@ -651,8 +653,8 @@ pub struct StreamsGroupHeartbeatRequest {
 impl Default for StreamsGroupHeartbeatRequest {
     fn default() -> Self {
         Self {
-            group_id: Bytes::new(),
-            member_id: Bytes::new(),
+            group_id: GroupId::default(),
+            member_id: StrBytes::new(),
             member_epoch: 0,
             endpoint_information_epoch: 0,
             instance_id: None,
@@ -685,22 +687,22 @@ impl StreamsGroupHeartbeatRequest {
             "unsupported version {} for api key {}", version, Self::API_KEY);
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.group_id);
+            size += compact_string_size(self.group_id.as_str());
         }
         {
-            size += compact_string_size(&self.member_id);
-        }
-        {
-            size += 4;
+            size += compact_string_size(self.member_id.as_str());
         }
         {
             size += 4;
         }
         {
-            size += compact_nullable_string_size(self.instance_id.as_deref());
+            size += 4;
         }
         {
-            size += compact_nullable_string_size(self.rack_id.as_deref());
+            size += compact_nullable_string_size(self.instance_id.as_ref().map(|v| v.as_str()));
+        }
+        {
+            size += compact_nullable_string_size(self.rack_id.as_ref().map(|v| v.as_str()));
         }
         {
             size += 4;
@@ -748,7 +750,7 @@ impl StreamsGroupHeartbeatRequest {
             }
         }
         {
-            size += compact_nullable_string_size(self.process_id.as_deref());
+            size += compact_nullable_string_size(self.process_id.as_ref().map(|v| v.as_str()));
         }
         {
             size += 1 + self.user_endpoint.as_ref().map_or(0, |v| v.encoded_size(version));
@@ -803,10 +805,10 @@ impl StreamsGroupHeartbeatRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            put_compact_string(buf, &self.group_id);
+            put_compact_string(buf, self.group_id.as_str());
         }
         {
-            put_compact_string(buf, &self.member_id);
+            put_compact_string(buf, self.member_id.as_str());
         }
         {
             put_i32(buf, self.member_epoch);
@@ -815,10 +817,10 @@ impl StreamsGroupHeartbeatRequest {
             put_i32(buf, self.endpoint_information_epoch);
         }
         {
-            put_compact_nullable_string(buf, self.instance_id.as_deref());
+            put_compact_nullable_string(buf, self.instance_id.as_ref().map(|v| v.as_str()));
         }
         {
-            put_compact_nullable_string(buf, self.rack_id.as_deref());
+            put_compact_nullable_string(buf, self.rack_id.as_ref().map(|v| v.as_str()));
         }
         {
             put_i32(buf, self.rebalance_timeout_ms);
@@ -860,7 +862,7 @@ impl StreamsGroupHeartbeatRequest {
             }
         }
         {
-            put_compact_nullable_string(buf, self.process_id.as_deref());
+            put_compact_nullable_string(buf, self.process_id.as_ref().map(|v| v.as_str()));
         }
         {
             match &self.user_endpoint { Some(v) => { put_i8(buf, 1); v.encode(version, buf); }, None => put_i8(buf, -1) };
@@ -910,7 +912,7 @@ impl StreamsGroupHeartbeatRequest {
         }
         let mut msg = StreamsGroupHeartbeatRequest::default();
         {
-            msg.group_id = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.group_id = GroupId((get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             msg.member_id = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;

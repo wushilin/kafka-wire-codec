@@ -1,20 +1,22 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 0-2.
 #[derive(Debug, Clone)]
 pub struct ListTransactionsRequest {
     /// The transaction states to filter by: if empty, all transactions are returned; if non-empty, then only transactions matching one of the filtered states will be returned.
-    pub state_filters: Vec<Bytes>,
+    pub state_filters: Vec<StrBytes>,
     /// The producerIds to filter by: if empty, all transactions will be returned; if non-empty, only transactions which match one of the filtered producerIds will be returned.
-    pub producer_id_filters: Vec<i64>,
+    pub producer_id_filters: Vec<ProducerId>,
     /// Duration (in millis) to filter by: if < 0, all transactions will be returned; otherwise, only transactions running longer than this duration will be returned.
     pub duration_filter: i64,
     /// The transactional ID regular expression pattern to filter by: if it is empty or null, all transactions are returned; Otherwise then only the transactions matching the given regular expression will be returned.
-    pub transactional_id_pattern: Option<Bytes>,
+    pub transactional_id_pattern: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -46,7 +48,7 @@ impl ListTransactionsRequest {
             { let arr = &self.state_filters;
                 size += uvarint_size(arr.len() as u64 + 1);
                 for item in arr {
-                    size += compact_string_size(item);
+                    size += compact_string_size(item.as_str());
                 }
             }
         }
@@ -60,7 +62,7 @@ impl ListTransactionsRequest {
             size += 8;
         }
         if version >= 2 {
-            size += if version >= 2 { compact_nullable_string_size(self.transactional_id_pattern.as_deref()) } else { let v = self.transactional_id_pattern.as_deref().expect("field transactional_id_pattern is None but not nullable at this version"); compact_string_size(v) };
+            size += if version >= 2 { compact_nullable_string_size(self.transactional_id_pattern.as_ref().map(|v| v.as_str())) } else { let v = self.transactional_id_pattern.as_ref().expect("field transactional_id_pattern is None but not nullable at this version"); compact_string_size(v.as_str()) };
         }
         size += tagged_fields_size(&self.tagged_fields);
         size
@@ -72,20 +74,20 @@ impl ListTransactionsRequest {
         {
             { let arr = &self.state_filters;
                 put_uvarint(buf, arr.len() as u64 + 1);
-                for item in arr { put_compact_string(buf, item); }
+                for item in arr { put_compact_string(buf, item.as_str()); }
             }
         }
         {
             { let arr = &self.producer_id_filters;
                 put_uvarint(buf, arr.len() as u64 + 1);
-                for item in arr { put_i64(buf, *item); }
+                for item in arr { put_i64(buf, item.0); }
             }
         }
         if version >= 1 {
             put_i64(buf, self.duration_filter);
         }
         if version >= 2 {
-            if version >= 2 { put_compact_nullable_string(buf, self.transactional_id_pattern.as_deref()) } else { let v = self.transactional_id_pattern.as_deref().expect("field transactional_id_pattern is None but not nullable at this version"); put_compact_string(buf, v) };
+            if version >= 2 { put_compact_nullable_string(buf, self.transactional_id_pattern.as_ref().map(|v| v.as_str())) } else { let v = self.transactional_id_pattern.as_ref().expect("field transactional_id_pattern is None but not nullable at this version"); put_compact_string(buf, v.as_str()) };
         }
         put_tagged_fields(buf, &self.tagged_fields);
     }
@@ -106,7 +108,7 @@ impl ListTransactionsRequest {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };
             let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
             { let mut items = Vec::with_capacity(count.min(buf.len()));
-                for _ in 0..count { items.push(get_i64(buf)?); }
+                for _ in 0..count { items.push((get_i64(buf)).map(ProducerId)?); }
             msg.producer_id_filters = items; }
         }
         if version >= 1 {

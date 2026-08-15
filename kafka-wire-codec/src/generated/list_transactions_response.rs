@@ -1,17 +1,19 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct TransactionState {
     /// The transactional id.
-    pub transactional_id: Bytes,
+    pub transactional_id: TransactionalId,
     /// The producer id.
-    pub producer_id: i64,
+    pub producer_id: ProducerId,
     /// The current transaction state of the producer.
-    pub transaction_state: Bytes,
+    pub transaction_state: StrBytes,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -20,13 +22,13 @@ impl TransactionState {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.transactional_id);
+            size += compact_string_size(self.transactional_id.as_str());
         }
         {
             size += 8;
         }
         {
-            size += compact_string_size(&self.transaction_state);
+            size += compact_string_size(self.transaction_state.as_str());
         }
         size += tagged_fields_size(&self.tagged_fields);
         size
@@ -34,13 +36,13 @@ impl TransactionState {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.transactional_id);
+            put_compact_string(buf, self.transactional_id.as_str());
         }
         {
-            put_i64(buf, self.producer_id);
+            put_i64(buf, self.producer_id.0);
         }
         {
-            put_compact_string(buf, &self.transaction_state);
+            put_compact_string(buf, self.transaction_state.as_str());
         }
         put_tagged_fields(buf, &self.tagged_fields);
     }
@@ -48,10 +50,10 @@ impl TransactionState {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = TransactionState::default();
         {
-            msg.transactional_id = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.transactional_id = TransactionalId((get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
-            msg.producer_id = get_i64(buf)?;
+            msg.producer_id = ProducerId(get_i64(buf)?);
         }
         {
             msg.transaction_state = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
@@ -69,7 +71,7 @@ pub struct ListTransactionsResponse {
     /// The error code, or 0 if there was no error.
     pub error_code: i16,
     /// Set of state filters provided in the request which were unknown to the transaction coordinator.
-    pub unknown_state_filters: Vec<Bytes>,
+    pub unknown_state_filters: Vec<StrBytes>,
     /// The current state of the transaction for the transactional id.
     pub transaction_states: Vec<TransactionState>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -97,7 +99,7 @@ impl ListTransactionsResponse {
             { let arr = &self.unknown_state_filters;
                 size += uvarint_size(arr.len() as u64 + 1);
                 for item in arr {
-                    size += compact_string_size(item);
+                    size += compact_string_size(item.as_str());
                 }
             }
         }
@@ -125,7 +127,7 @@ impl ListTransactionsResponse {
         {
             { let arr = &self.unknown_state_filters;
                 put_uvarint(buf, arr.len() as u64 + 1);
-                for item in arr { put_compact_string(buf, item); }
+                for item in arr { put_compact_string(buf, item.as_str()); }
             }
         }
         {

@@ -1,23 +1,25 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct Coordinator {
     /// The coordinator key.
-    pub key: Bytes,
+    pub key: StrBytes,
     /// The node id.
-    pub node_id: i32,
+    pub node_id: BrokerId,
     /// The host name.
-    pub host: Bytes,
+    pub host: StrBytes,
     /// The port.
     pub port: i32,
     /// The error code, or 0 if there was no error.
     pub error_code: i16,
     /// The error message, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -25,12 +27,12 @@ pub struct Coordinator {
 impl Default for Coordinator {
     fn default() -> Self {
         Self {
-            key: Bytes::new(),
-            node_id: 0,
-            host: Bytes::new(),
+            key: StrBytes::new(),
+            node_id: BrokerId::default(),
+            host: StrBytes::new(),
             port: 0,
             error_code: 0,
-            error_message: Some(Bytes::new()),
+            error_message: Some(StrBytes::new()),
             tagged_fields: Vec::new(),
         }
     }
@@ -40,13 +42,13 @@ impl Coordinator {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version >= 4 {
-            size += if version >= 3 { compact_string_size(&self.key) } else { string_size(&self.key) };
+            size += if version >= 3 { compact_string_size(self.key.as_str()) } else { string_size(self.key.as_str()) };
         }
         if version >= 4 {
             size += 4;
         }
         if version >= 4 {
-            size += if version >= 3 { compact_string_size(&self.host) } else { string_size(&self.host) };
+            size += if version >= 3 { compact_string_size(self.host.as_str()) } else { string_size(self.host.as_str()) };
         }
         if version >= 4 {
             size += 4;
@@ -55,7 +57,7 @@ impl Coordinator {
             size += 2;
         }
         if version >= 4 {
-            size += if version >= 4 { if version >= 3 { compact_nullable_string_size(self.error_message.as_deref()) } else { nullable_string_size(self.error_message.as_deref()) } } else { let v = self.error_message.as_deref().expect("field error_message is None but not nullable at this version"); if version >= 3 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 4 { if version >= 3 { compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } } else { let v = self.error_message.as_ref().expect("field error_message is None but not nullable at this version"); if version >= 3 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         if version >= 3 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -63,13 +65,13 @@ impl Coordinator {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 4 {
-            if version >= 3 { put_compact_string(buf, &self.key) } else { put_string(buf, &self.key) };
+            if version >= 3 { put_compact_string(buf, self.key.as_str()) } else { put_string(buf, self.key.as_str()) };
         }
         if version >= 4 {
-            put_i32(buf, self.node_id);
+            put_i32(buf, self.node_id.0);
         }
         if version >= 4 {
-            if version >= 3 { put_compact_string(buf, &self.host) } else { put_string(buf, &self.host) };
+            if version >= 3 { put_compact_string(buf, self.host.as_str()) } else { put_string(buf, self.host.as_str()) };
         }
         if version >= 4 {
             put_i32(buf, self.port);
@@ -78,7 +80,7 @@ impl Coordinator {
             put_i16(buf, self.error_code);
         }
         if version >= 4 {
-            if version >= 4 { if version >= 3 { put_compact_nullable_string(buf, self.error_message.as_deref()) } else { put_nullable_string(buf, self.error_message.as_deref()) } } else { let v = self.error_message.as_deref().expect("field error_message is None but not nullable at this version"); if version >= 3 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 4 { if version >= 3 { put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } } else { let v = self.error_message.as_ref().expect("field error_message is None but not nullable at this version"); if version >= 3 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         if version >= 3 { put_tagged_fields(buf, &self.tagged_fields); }
     }
@@ -89,7 +91,7 @@ impl Coordinator {
             msg.key = (if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
         }
         if version >= 4 {
-            msg.node_id = get_i32(buf)?;
+            msg.node_id = BrokerId(get_i32(buf)?);
         }
         if version >= 4 {
             msg.host = (if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
@@ -116,11 +118,11 @@ pub struct FindCoordinatorResponse {
     /// The error code, or 0 if there was no error.
     pub error_code: i16,
     /// The error message, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// The node id.
-    pub node_id: i32,
+    pub node_id: BrokerId,
     /// The host name.
-    pub host: Bytes,
+    pub host: StrBytes,
     /// The port.
     pub port: i32,
     /// Each coordinator result in the response.
@@ -134,9 +136,9 @@ impl Default for FindCoordinatorResponse {
         Self {
             throttle_time_ms: 0,
             error_code: 0,
-            error_message: Some(Bytes::new()),
-            node_id: 0,
-            host: Bytes::new(),
+            error_message: Some(StrBytes::new()),
+            node_id: BrokerId::default(),
+            host: StrBytes::new(),
             port: 0,
             coordinators: Vec::new(),
             tagged_fields: Vec::new(),
@@ -162,13 +164,13 @@ impl FindCoordinatorResponse {
             size += 2;
         }
         if version >= 1 && version <= 3 {
-            size += if version >= 1 && version <= 3 { if version >= 3 { compact_nullable_string_size(self.error_message.as_deref()) } else { nullable_string_size(self.error_message.as_deref()) } } else { let v = self.error_message.as_deref().expect("field error_message is None but not nullable at this version"); if version >= 3 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 1 && version <= 3 { if version >= 3 { compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } } else { let v = self.error_message.as_ref().expect("field error_message is None but not nullable at this version"); if version >= 3 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         if version <= 3 {
             size += 4;
         }
         if version <= 3 {
-            size += if version >= 3 { compact_string_size(&self.host) } else { string_size(&self.host) };
+            size += if version >= 3 { compact_string_size(self.host.as_str()) } else { string_size(self.host.as_str()) };
         }
         if version <= 3 {
             size += 4;
@@ -195,13 +197,13 @@ impl FindCoordinatorResponse {
             put_i16(buf, self.error_code);
         }
         if version >= 1 && version <= 3 {
-            if version >= 1 && version <= 3 { if version >= 3 { put_compact_nullable_string(buf, self.error_message.as_deref()) } else { put_nullable_string(buf, self.error_message.as_deref()) } } else { let v = self.error_message.as_deref().expect("field error_message is None but not nullable at this version"); if version >= 3 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 1 && version <= 3 { if version >= 3 { put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } } else { let v = self.error_message.as_ref().expect("field error_message is None but not nullable at this version"); if version >= 3 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         if version <= 3 {
-            put_i32(buf, self.node_id);
+            put_i32(buf, self.node_id.0);
         }
         if version <= 3 {
-            if version >= 3 { put_compact_string(buf, &self.host) } else { put_string(buf, &self.host) };
+            if version >= 3 { put_compact_string(buf, self.host.as_str()) } else { put_string(buf, self.host.as_str()) };
         }
         if version <= 3 {
             put_i32(buf, self.port);
@@ -230,7 +232,7 @@ impl FindCoordinatorResponse {
             msg.error_message = { let v = if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }; if version >= 1 && version <= 3 { v } else { Some(v.ok_or(DecodeError::NullForNonNullable)?) } };
         }
         if version <= 3 {
-            msg.node_id = get_i32(buf)?;
+            msg.node_id = BrokerId(get_i32(buf)?);
         }
         if version <= 3 {
             msg.host = (if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;

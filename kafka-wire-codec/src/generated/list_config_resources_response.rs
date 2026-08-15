@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct ConfigResource {
     /// The resource name.
-    pub resource_name: Bytes,
+    pub resource_name: StrBytes,
     /// The resource type.
     pub resource_type: i8,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -17,7 +19,7 @@ pub struct ConfigResource {
 impl Default for ConfigResource {
     fn default() -> Self {
         Self {
-            resource_name: Bytes::new(),
+            resource_name: StrBytes::new(),
             resource_type: 16,
             tagged_fields: Vec::new(),
         }
@@ -28,7 +30,7 @@ impl ConfigResource {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.resource_name);
+            size += compact_string_size(self.resource_name.as_str());
         }
         if version >= 1 {
             size += 1;
@@ -39,7 +41,7 @@ impl ConfigResource {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.resource_name);
+            put_compact_string(buf, self.resource_name.as_str());
         }
         if version >= 1 {
             put_i8(buf, self.resource_type);

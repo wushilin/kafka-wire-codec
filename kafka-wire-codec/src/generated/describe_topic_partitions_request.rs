@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct TopicRequest {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -16,7 +18,7 @@ impl TopicRequest {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.name);
+            size += compact_string_size(self.name.as_str());
         }
         size += tagged_fields_size(&self.tagged_fields);
         size
@@ -24,7 +26,7 @@ impl TopicRequest {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.name);
+            put_compact_string(buf, self.name.as_str());
         }
         put_tagged_fields(buf, &self.tagged_fields);
     }
@@ -32,7 +34,7 @@ impl TopicRequest {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = TopicRequest::default();
         {
-            msg.name = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         msg.tagged_fields = get_tagged_fields(buf)?;
         Ok(msg)
@@ -42,7 +44,7 @@ impl TopicRequest {
 #[derive(Debug, Clone, Default)]
 pub struct Cursor {
     /// The name for the first topic to process.
-    pub topic_name: Bytes,
+    pub topic_name: TopicName,
     /// The partition index to start with.
     pub partition_index: i32,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -53,7 +55,7 @@ impl Cursor {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.topic_name);
+            size += compact_string_size(self.topic_name.as_str());
         }
         {
             size += 4;
@@ -64,7 +66,7 @@ impl Cursor {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.topic_name);
+            put_compact_string(buf, self.topic_name.as_str());
         }
         {
             put_i32(buf, self.partition_index);
@@ -75,7 +77,7 @@ impl Cursor {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = Cursor::default();
         {
-            msg.topic_name = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.topic_name = TopicName((get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             msg.partition_index = get_i32(buf)?;

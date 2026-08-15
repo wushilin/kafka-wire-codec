@@ -1,15 +1,17 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct DeleteTopicState {
     /// The topic name.
-    pub name: Option<Bytes>,
+    pub name: Option<TopicName>,
     /// The unique topic ID.
-    pub topic_id: [u8; 16],
+    pub topic_id: Uuid,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -18,7 +20,7 @@ impl DeleteTopicState {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version >= 6 {
-            size += if version >= 6 { if version >= 4 { compact_nullable_string_size(self.name.as_deref()) } else { nullable_string_size(self.name.as_deref()) } } else { let v = self.name.as_deref().expect("field name is None but not nullable at this version"); if version >= 4 { compact_string_size(v) } else { string_size(v) } };
+            size += if version >= 6 { if version >= 4 { compact_nullable_string_size(self.name.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.name.as_ref().map(|v| v.as_str())) } } else { let v = self.name.as_ref().expect("field name is None but not nullable at this version"); if version >= 4 { compact_string_size(v.as_str()) } else { string_size(v.as_str()) } };
         }
         if version >= 6 {
             size += 16;
@@ -29,7 +31,7 @@ impl DeleteTopicState {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 6 {
-            if version >= 6 { if version >= 4 { put_compact_nullable_string(buf, self.name.as_deref()) } else { put_nullable_string(buf, self.name.as_deref()) } } else { let v = self.name.as_deref().expect("field name is None but not nullable at this version"); if version >= 4 { put_compact_string(buf, v) } else { put_string(buf, v) } };
+            if version >= 6 { if version >= 4 { put_compact_nullable_string(buf, self.name.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.name.as_ref().map(|v| v.as_str())) } } else { let v = self.name.as_ref().expect("field name is None but not nullable at this version"); if version >= 4 { put_compact_string(buf, v.as_str()) } else { put_string(buf, v.as_str()) } };
         }
         if version >= 6 {
             put_uuid(buf, &self.topic_id);
@@ -40,7 +42,7 @@ impl DeleteTopicState {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = DeleteTopicState::default();
         if version >= 6 {
-            msg.name = { let v = if version >= 4 { get_compact_string(buf)? } else { get_string(buf)? }; if version >= 6 { v } else { Some(v.ok_or(DecodeError::NullForNonNullable)?) } };
+            msg.name = { let v = if version >= 4 { get_compact_string(buf)? } else { get_string(buf)? }; if version >= 6 { v } else { Some(v.ok_or(DecodeError::NullForNonNullable)?) } }.map(TopicName);
         }
         if version >= 6 {
             msg.topic_id = get_uuid(buf)?;
@@ -56,7 +58,7 @@ pub struct DeleteTopicsRequest {
     /// The name or topic ID of the topic.
     pub topics: Vec<DeleteTopicState>,
     /// The names of the topics to delete.
-    pub topic_names: Vec<Bytes>,
+    pub topic_names: Vec<TopicName>,
     /// The length of time in milliseconds to wait for the deletions to complete.
     pub timeout_ms: i32,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -86,7 +88,7 @@ impl DeleteTopicsRequest {
             { let arr = &self.topic_names;
                 if version >= 4 { size += uvarint_size(arr.len() as u64 + 1); } else { size += 4; }
                 for item in arr {
-                    size += if version >= 4 { compact_string_size(item) } else { string_size(item) };
+                    size += if version >= 4 { compact_string_size(item.as_str()) } else { string_size(item.as_str()) };
                 }
             }
         }
@@ -109,7 +111,7 @@ impl DeleteTopicsRequest {
         if version <= 5 {
             { let arr = &self.topic_names;
                 if version >= 4 { put_uvarint(buf, arr.len() as u64 + 1); } else { put_i32(buf, arr.len() as i32); }
-                for item in arr { if version >= 4 { put_compact_string(buf, item); } else { put_string(buf, item); } }
+                for item in arr { if version >= 4 { put_compact_string(buf, item.as_str()); } else { put_string(buf, item.as_str()); } }
             }
         }
         {
@@ -134,7 +136,7 @@ impl DeleteTopicsRequest {
             let len_opt = if version >= 4 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };
             let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
             { let mut items = Vec::with_capacity(count.min(buf.len()));
-                for _ in 0..count { items.push((if version >= 4 { get_compact_string(buf) } else { get_string(buf) }).and_then(|o| o.ok_or(DecodeError::NullForNonNullable))?); }
+                for _ in 0..count { items.push(((if version >= 4 { get_compact_string(buf) } else { get_string(buf) }).and_then(|o| o.ok_or(DecodeError::NullForNonNullable))).map(TopicName)?); }
             msg.topic_names = items; }
         }
         {

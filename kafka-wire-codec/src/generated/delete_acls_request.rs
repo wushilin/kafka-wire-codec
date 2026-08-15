@@ -1,21 +1,23 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct DeleteAclsFilter {
     /// The resource type.
     pub resource_type_filter: i8,
     /// The resource name, or null to match any resource name.
-    pub resource_name_filter: Option<Bytes>,
+    pub resource_name_filter: Option<StrBytes>,
     /// The pattern type.
     pub pattern_type_filter: i8,
     /// The principal filter, or null to accept all principals.
-    pub principal_filter: Option<Bytes>,
+    pub principal_filter: Option<StrBytes>,
     /// The host filter, or null to accept all hosts.
-    pub host_filter: Option<Bytes>,
+    pub host_filter: Option<StrBytes>,
     /// The ACL operation.
     pub operation: i8,
     /// The permission type.
@@ -28,10 +30,10 @@ impl Default for DeleteAclsFilter {
     fn default() -> Self {
         Self {
             resource_type_filter: 0,
-            resource_name_filter: Some(Bytes::new()),
+            resource_name_filter: Some(StrBytes::new()),
             pattern_type_filter: 3,
-            principal_filter: Some(Bytes::new()),
-            host_filter: Some(Bytes::new()),
+            principal_filter: Some(StrBytes::new()),
+            host_filter: Some(StrBytes::new()),
             operation: 0,
             permission_type: 0,
             tagged_fields: Vec::new(),
@@ -46,16 +48,16 @@ impl DeleteAclsFilter {
             size += 1;
         }
         {
-            size += if version >= 2 { compact_nullable_string_size(self.resource_name_filter.as_deref()) } else { nullable_string_size(self.resource_name_filter.as_deref()) };
+            size += if version >= 2 { compact_nullable_string_size(self.resource_name_filter.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.resource_name_filter.as_ref().map(|v| v.as_str())) };
         }
         if version >= 1 {
             size += 1;
         }
         {
-            size += if version >= 2 { compact_nullable_string_size(self.principal_filter.as_deref()) } else { nullable_string_size(self.principal_filter.as_deref()) };
+            size += if version >= 2 { compact_nullable_string_size(self.principal_filter.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.principal_filter.as_ref().map(|v| v.as_str())) };
         }
         {
-            size += if version >= 2 { compact_nullable_string_size(self.host_filter.as_deref()) } else { nullable_string_size(self.host_filter.as_deref()) };
+            size += if version >= 2 { compact_nullable_string_size(self.host_filter.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.host_filter.as_ref().map(|v| v.as_str())) };
         }
         {
             size += 1;
@@ -72,16 +74,16 @@ impl DeleteAclsFilter {
             put_i8(buf, self.resource_type_filter);
         }
         {
-            if version >= 2 { put_compact_nullable_string(buf, self.resource_name_filter.as_deref()) } else { put_nullable_string(buf, self.resource_name_filter.as_deref()) };
+            if version >= 2 { put_compact_nullable_string(buf, self.resource_name_filter.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.resource_name_filter.as_ref().map(|v| v.as_str())) };
         }
         if version >= 1 {
             put_i8(buf, self.pattern_type_filter);
         }
         {
-            if version >= 2 { put_compact_nullable_string(buf, self.principal_filter.as_deref()) } else { put_nullable_string(buf, self.principal_filter.as_deref()) };
+            if version >= 2 { put_compact_nullable_string(buf, self.principal_filter.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.principal_filter.as_ref().map(|v| v.as_str())) };
         }
         {
-            if version >= 2 { put_compact_nullable_string(buf, self.host_filter.as_deref()) } else { put_nullable_string(buf, self.host_filter.as_deref()) };
+            if version >= 2 { put_compact_nullable_string(buf, self.host_filter.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.host_filter.as_ref().map(|v| v.as_str())) };
         }
         {
             put_i8(buf, self.operation);

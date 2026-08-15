@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct ReassignableTopic {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The partitions to reassign.
     pub partitions: Vec<ReassignablePartition>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl ReassignableTopic {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.name);
+            size += compact_string_size(self.name.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -34,7 +36,7 @@ impl ReassignableTopic {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.name);
+            put_compact_string(buf, self.name.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -48,7 +50,7 @@ impl ReassignableTopic {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = ReassignableTopic::default();
         {
-            msg.name = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };
@@ -67,7 +69,7 @@ pub struct ReassignablePartition {
     /// The partition index.
     pub partition_index: i32,
     /// The replicas to place the partitions on, or null to cancel a pending reassignment for this partition.
-    pub replicas: Option<Vec<i32>>,
+    pub replicas: Option<Vec<BrokerId>>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -101,7 +103,7 @@ impl ReassignablePartition {
             match &self.replicas {
                 Some(arr) => {
                 put_uvarint(buf, arr.len() as u64 + 1);
-                for item in arr { put_i32(buf, *item); }
+                for item in arr { put_i32(buf, item.0); }
                 }
                 None => {
                     put_uvarint(buf, 0);
@@ -121,7 +123,7 @@ impl ReassignablePartition {
             msg.replicas = match len_opt {
                 Some(count) => {
                 let mut items = Vec::with_capacity(count.min(buf.len()));
-                for _ in 0..count { items.push(get_i32(buf)?); }
+                for _ in 0..count { items.push((get_i32(buf)).map(BrokerId)?); }
                 Some(items)
                 }
                 None => None,

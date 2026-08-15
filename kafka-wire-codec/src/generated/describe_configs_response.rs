@@ -1,19 +1,21 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct DescribeConfigsResult {
     /// The error code, or 0 if we were able to successfully describe the configurations.
     pub error_code: i16,
     /// The error message, or null if we were able to successfully describe the configurations.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// The resource type.
     pub resource_type: i8,
     /// The resource name.
-    pub resource_name: Bytes,
+    pub resource_name: StrBytes,
     /// Each listed configuration.
     pub configs: Vec<DescribeConfigsResourceResult>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -24,9 +26,9 @@ impl Default for DescribeConfigsResult {
     fn default() -> Self {
         Self {
             error_code: 0,
-            error_message: Some(Bytes::new()),
+            error_message: Some(StrBytes::new()),
             resource_type: 0,
-            resource_name: Bytes::new(),
+            resource_name: StrBytes::new(),
             configs: Vec::new(),
             tagged_fields: Vec::new(),
         }
@@ -40,13 +42,13 @@ impl DescribeConfigsResult {
             size += 2;
         }
         {
-            size += if version >= 4 { compact_nullable_string_size(self.error_message.as_deref()) } else { nullable_string_size(self.error_message.as_deref()) };
+            size += if version >= 4 { compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) };
         }
         {
             size += 1;
         }
         {
-            size += if version >= 4 { compact_string_size(&self.resource_name) } else { string_size(&self.resource_name) };
+            size += if version >= 4 { compact_string_size(self.resource_name.as_str()) } else { string_size(self.resource_name.as_str()) };
         }
         {
             { let arr = &self.configs;
@@ -65,13 +67,13 @@ impl DescribeConfigsResult {
             put_i16(buf, self.error_code);
         }
         {
-            if version >= 4 { put_compact_nullable_string(buf, self.error_message.as_deref()) } else { put_nullable_string(buf, self.error_message.as_deref()) };
+            if version >= 4 { put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) };
         }
         {
             put_i8(buf, self.resource_type);
         }
         {
-            if version >= 4 { put_compact_string(buf, &self.resource_name) } else { put_string(buf, &self.resource_name) };
+            if version >= 4 { put_compact_string(buf, self.resource_name.as_str()) } else { put_string(buf, self.resource_name.as_str()) };
         }
         {
             { let arr = &self.configs;
@@ -111,9 +113,9 @@ impl DescribeConfigsResult {
 #[derive(Debug, Clone)]
 pub struct DescribeConfigsResourceResult {
     /// The configuration name.
-    pub name: Bytes,
+    pub name: StrBytes,
     /// The configuration value.
-    pub value: Option<Bytes>,
+    pub value: Option<StrBytes>,
     /// True if the configuration is read-only.
     pub read_only: bool,
     /// The configuration source.
@@ -125,7 +127,7 @@ pub struct DescribeConfigsResourceResult {
     /// The configuration data type. Type can be one of the following values - BOOLEAN, STRING, INT, SHORT, LONG, DOUBLE, LIST, CLASS, PASSWORD.
     pub config_type: i8,
     /// The configuration documentation.
-    pub documentation: Option<Bytes>,
+    pub documentation: Option<StrBytes>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -133,14 +135,14 @@ pub struct DescribeConfigsResourceResult {
 impl Default for DescribeConfigsResourceResult {
     fn default() -> Self {
         Self {
-            name: Bytes::new(),
-            value: Some(Bytes::new()),
+            name: StrBytes::new(),
+            value: Some(StrBytes::new()),
             read_only: false,
             config_source: -1,
             is_sensitive: false,
             synonyms: Vec::new(),
             config_type: 0,
-            documentation: Some(Bytes::new()),
+            documentation: Some(StrBytes::new()),
             tagged_fields: Vec::new(),
         }
     }
@@ -150,10 +152,10 @@ impl DescribeConfigsResourceResult {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 4 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 4 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         {
-            size += if version >= 4 { compact_nullable_string_size(self.value.as_deref()) } else { nullable_string_size(self.value.as_deref()) };
+            size += if version >= 4 { compact_nullable_string_size(self.value.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.value.as_ref().map(|v| v.as_str())) };
         }
         {
             size += 1;
@@ -176,7 +178,7 @@ impl DescribeConfigsResourceResult {
             size += 1;
         }
         if version >= 3 {
-            size += if version >= 4 { compact_nullable_string_size(self.documentation.as_deref()) } else { nullable_string_size(self.documentation.as_deref()) };
+            size += if version >= 4 { compact_nullable_string_size(self.documentation.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.documentation.as_ref().map(|v| v.as_str())) };
         }
         if version >= 4 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -184,10 +186,10 @@ impl DescribeConfigsResourceResult {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 4 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 4 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         {
-            if version >= 4 { put_compact_nullable_string(buf, self.value.as_deref()) } else { put_nullable_string(buf, self.value.as_deref()) };
+            if version >= 4 { put_compact_nullable_string(buf, self.value.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.value.as_ref().map(|v| v.as_str())) };
         }
         {
             put_bool(buf, self.read_only);
@@ -208,7 +210,7 @@ impl DescribeConfigsResourceResult {
             put_i8(buf, self.config_type);
         }
         if version >= 3 {
-            if version >= 4 { put_compact_nullable_string(buf, self.documentation.as_deref()) } else { put_nullable_string(buf, self.documentation.as_deref()) };
+            if version >= 4 { put_compact_nullable_string(buf, self.documentation.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.documentation.as_ref().map(|v| v.as_str())) };
         }
         if version >= 4 { put_tagged_fields(buf, &self.tagged_fields); }
     }
@@ -251,9 +253,9 @@ impl DescribeConfigsResourceResult {
 #[derive(Debug, Clone)]
 pub struct DescribeConfigsSynonym {
     /// The synonym name.
-    pub name: Bytes,
+    pub name: StrBytes,
     /// The synonym value.
-    pub value: Option<Bytes>,
+    pub value: Option<StrBytes>,
     /// The synonym source.
     pub source: i8,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -263,8 +265,8 @@ pub struct DescribeConfigsSynonym {
 impl Default for DescribeConfigsSynonym {
     fn default() -> Self {
         Self {
-            name: Bytes::new(),
-            value: Some(Bytes::new()),
+            name: StrBytes::new(),
+            value: Some(StrBytes::new()),
             source: 0,
             tagged_fields: Vec::new(),
         }
@@ -275,10 +277,10 @@ impl DescribeConfigsSynonym {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version >= 1 {
-            size += if version >= 4 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 4 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         if version >= 1 {
-            size += if version >= 4 { compact_nullable_string_size(self.value.as_deref()) } else { nullable_string_size(self.value.as_deref()) };
+            size += if version >= 4 { compact_nullable_string_size(self.value.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.value.as_ref().map(|v| v.as_str())) };
         }
         if version >= 1 {
             size += 1;
@@ -289,10 +291,10 @@ impl DescribeConfigsSynonym {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 1 {
-            if version >= 4 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 4 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         if version >= 1 {
-            if version >= 4 { put_compact_nullable_string(buf, self.value.as_deref()) } else { put_nullable_string(buf, self.value.as_deref()) };
+            if version >= 4 { put_compact_nullable_string(buf, self.value.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.value.as_ref().map(|v| v.as_str())) };
         }
         if version >= 1 {
             put_i8(buf, self.source);

@@ -1,15 +1,17 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct ReplicaState {
     /// The ID of the replica.
-    pub replica_id: i32,
+    pub replica_id: BrokerId,
     /// The replica directory ID of the replica.
-    pub replica_directory_id: [u8; 16],
+    pub replica_directory_id: Uuid,
     /// The last known log end offset of the follower or -1 if it is unknown.
     pub log_end_offset: i64,
     /// The last known leader wall clock time time when a follower fetched from the leader. This is reported as -1 both for the current leader or if it is unknown for a voter.
@@ -23,8 +25,8 @@ pub struct ReplicaState {
 impl Default for ReplicaState {
     fn default() -> Self {
         Self {
-            replica_id: 0,
-            replica_directory_id: [0u8; 16],
+            replica_id: BrokerId::default(),
+            replica_directory_id: Uuid::nil(),
             log_end_offset: 0,
             last_fetch_timestamp: -1,
             last_caught_up_timestamp: -1,
@@ -57,7 +59,7 @@ impl ReplicaState {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_i32(buf, self.replica_id);
+            put_i32(buf, self.replica_id.0);
         }
         if version >= 2 {
             put_uuid(buf, &self.replica_directory_id);
@@ -77,7 +79,7 @@ impl ReplicaState {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = ReplicaState::default();
         {
-            msg.replica_id = get_i32(buf)?;
+            msg.replica_id = BrokerId(get_i32(buf)?);
         }
         if version >= 2 {
             msg.replica_directory_id = get_uuid(buf)?;
@@ -99,7 +101,7 @@ impl ReplicaState {
 #[derive(Debug, Clone, Default)]
 pub struct TopicData {
     /// The topic name.
-    pub topic_name: Bytes,
+    pub topic_name: TopicName,
     /// The partition data.
     pub partitions: Vec<PartitionData>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -110,7 +112,7 @@ impl TopicData {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += compact_string_size(&self.topic_name);
+            size += compact_string_size(self.topic_name.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -126,7 +128,7 @@ impl TopicData {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_compact_string(buf, &self.topic_name);
+            put_compact_string(buf, self.topic_name.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -140,7 +142,7 @@ impl TopicData {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = TopicData::default();
         {
-            msg.topic_name = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.topic_name = TopicName((get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };
@@ -161,9 +163,9 @@ pub struct PartitionData {
     /// The partition error code.
     pub error_code: i16,
     /// The error message, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// The ID of the current leader or -1 if the leader is unknown.
-    pub leader_id: i32,
+    pub leader_id: BrokerId,
     /// The latest known leader epoch.
     pub leader_epoch: i32,
     /// The high water mark.
@@ -181,8 +183,8 @@ impl Default for PartitionData {
         Self {
             partition_index: 0,
             error_code: 0,
-            error_message: Some(Bytes::new()),
-            leader_id: 0,
+            error_message: Some(StrBytes::new()),
+            leader_id: BrokerId::default(),
             leader_epoch: 0,
             high_watermark: 0,
             current_voters: Vec::new(),
@@ -202,7 +204,7 @@ impl PartitionData {
             size += 2;
         }
         if version >= 2 {
-            size += if version >= 2 { compact_nullable_string_size(self.error_message.as_deref()) } else { let v = self.error_message.as_deref().expect("field error_message is None but not nullable at this version"); compact_string_size(v) };
+            size += if version >= 2 { compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } else { let v = self.error_message.as_ref().expect("field error_message is None but not nullable at this version"); compact_string_size(v.as_str()) };
         }
         {
             size += 4;
@@ -241,10 +243,10 @@ impl PartitionData {
             put_i16(buf, self.error_code);
         }
         if version >= 2 {
-            if version >= 2 { put_compact_nullable_string(buf, self.error_message.as_deref()) } else { let v = self.error_message.as_deref().expect("field error_message is None but not nullable at this version"); put_compact_string(buf, v) };
+            if version >= 2 { put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } else { let v = self.error_message.as_ref().expect("field error_message is None but not nullable at this version"); put_compact_string(buf, v.as_str()) };
         }
         {
-            put_i32(buf, self.leader_id);
+            put_i32(buf, self.leader_id.0);
         }
         {
             put_i32(buf, self.leader_epoch);
@@ -279,7 +281,7 @@ impl PartitionData {
             msg.error_message = { let v = get_compact_string(buf)?; if version >= 2 { v } else { Some(v.ok_or(DecodeError::NullForNonNullable)?) } };
         }
         {
-            msg.leader_id = get_i32(buf)?;
+            msg.leader_id = BrokerId(get_i32(buf)?);
         }
         {
             msg.leader_epoch = get_i32(buf)?;
@@ -309,7 +311,7 @@ impl PartitionData {
 #[derive(Debug, Clone, Default)]
 pub struct Node {
     /// The ID of the associated node.
-    pub node_id: i32,
+    pub node_id: BrokerId,
     /// The listeners of this controller.
     pub listeners: Vec<Listener>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -336,7 +338,7 @@ impl Node {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 2 {
-            put_i32(buf, self.node_id);
+            put_i32(buf, self.node_id.0);
         }
         if version >= 2 {
             { let arr = &self.listeners;
@@ -350,7 +352,7 @@ impl Node {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = Node::default();
         if version >= 2 {
-            msg.node_id = get_i32(buf)?;
+            msg.node_id = BrokerId(get_i32(buf)?);
         }
         if version >= 2 {
             let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };
@@ -367,9 +369,9 @@ impl Node {
 #[derive(Debug, Clone, Default)]
 pub struct Listener {
     /// The name of the endpoint.
-    pub name: Bytes,
+    pub name: StrBytes,
     /// The hostname.
-    pub host: Bytes,
+    pub host: StrBytes,
     /// The port.
     pub port: u16,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -380,10 +382,10 @@ impl Listener {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version >= 2 {
-            size += compact_string_size(&self.name);
+            size += compact_string_size(self.name.as_str());
         }
         if version >= 2 {
-            size += compact_string_size(&self.host);
+            size += compact_string_size(self.host.as_str());
         }
         if version >= 2 {
             size += 2;
@@ -394,10 +396,10 @@ impl Listener {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 2 {
-            put_compact_string(buf, &self.name);
+            put_compact_string(buf, self.name.as_str());
         }
         if version >= 2 {
-            put_compact_string(buf, &self.host);
+            put_compact_string(buf, self.host.as_str());
         }
         if version >= 2 {
             put_u16(buf, self.port);
@@ -427,7 +429,7 @@ pub struct DescribeQuorumResponse {
     /// The top level error code.
     pub error_code: i16,
     /// The error message, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// The response from the describe quorum API.
     pub topics: Vec<TopicData>,
     /// The nodes in the quorum.
@@ -440,7 +442,7 @@ impl Default for DescribeQuorumResponse {
     fn default() -> Self {
         Self {
             error_code: 0,
-            error_message: Some(Bytes::new()),
+            error_message: Some(StrBytes::new()),
             topics: Vec::new(),
             nodes: Vec::new(),
             tagged_fields: Vec::new(),
@@ -463,7 +465,7 @@ impl DescribeQuorumResponse {
             size += 2;
         }
         if version >= 2 {
-            size += if version >= 2 { compact_nullable_string_size(self.error_message.as_deref()) } else { let v = self.error_message.as_deref().expect("field error_message is None but not nullable at this version"); compact_string_size(v) };
+            size += if version >= 2 { compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } else { let v = self.error_message.as_ref().expect("field error_message is None but not nullable at this version"); compact_string_size(v.as_str()) };
         }
         {
             { let arr = &self.topics;
@@ -492,7 +494,7 @@ impl DescribeQuorumResponse {
             put_i16(buf, self.error_code);
         }
         if version >= 2 {
-            if version >= 2 { put_compact_nullable_string(buf, self.error_message.as_deref()) } else { let v = self.error_message.as_deref().expect("field error_message is None but not nullable at this version"); put_compact_string(buf, v) };
+            if version >= 2 { put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } else { let v = self.error_message.as_ref().expect("field error_message is None but not nullable at this version"); put_compact_string(buf, v.as_str()) };
         }
         {
             { let arr = &self.topics;

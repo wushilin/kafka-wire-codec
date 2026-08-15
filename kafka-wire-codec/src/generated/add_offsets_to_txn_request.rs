@@ -1,20 +1,22 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 /// Valid versions: 0-4.
 #[derive(Debug, Clone, Default)]
 pub struct AddOffsetsToTxnRequest {
     /// The transactional id corresponding to the transaction.
-    pub transactional_id: Bytes,
+    pub transactional_id: TransactionalId,
     /// Current producer id in use by the transactional id.
-    pub producer_id: i64,
+    pub producer_id: ProducerId,
     /// Current epoch associated with the producer id.
     pub producer_epoch: i16,
     /// The unique group identifier.
-    pub group_id: Bytes,
+    pub group_id: GroupId,
     /// Raw tagged fields (flexible versions), in ascending tag order.
     pub tagged_fields: Vec<(u32, Bytes)>,
 }
@@ -31,7 +33,7 @@ impl AddOffsetsToTxnRequest {
             "unsupported version {} for api key {}", version, Self::API_KEY);
         let mut size = 0usize;
         {
-            size += if version >= 3 { compact_string_size(&self.transactional_id) } else { string_size(&self.transactional_id) };
+            size += if version >= 3 { compact_string_size(self.transactional_id.as_str()) } else { string_size(self.transactional_id.as_str()) };
         }
         {
             size += 8;
@@ -40,7 +42,7 @@ impl AddOffsetsToTxnRequest {
             size += 2;
         }
         {
-            size += if version >= 3 { compact_string_size(&self.group_id) } else { string_size(&self.group_id) };
+            size += if version >= 3 { compact_string_size(self.group_id.as_str()) } else { string_size(self.group_id.as_str()) };
         }
         if version >= 3 { size += tagged_fields_size(&self.tagged_fields); }
         size
@@ -50,16 +52,16 @@ impl AddOffsetsToTxnRequest {
         assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
             "unsupported version {} for api key {}", version, Self::API_KEY);
         {
-            if version >= 3 { put_compact_string(buf, &self.transactional_id) } else { put_string(buf, &self.transactional_id) };
+            if version >= 3 { put_compact_string(buf, self.transactional_id.as_str()) } else { put_string(buf, self.transactional_id.as_str()) };
         }
         {
-            put_i64(buf, self.producer_id);
+            put_i64(buf, self.producer_id.0);
         }
         {
             put_i16(buf, self.producer_epoch);
         }
         {
-            if version >= 3 { put_compact_string(buf, &self.group_id) } else { put_string(buf, &self.group_id) };
+            if version >= 3 { put_compact_string(buf, self.group_id.as_str()) } else { put_string(buf, self.group_id.as_str()) };
         }
         if version >= 3 { put_tagged_fields(buf, &self.tagged_fields); }
     }
@@ -70,16 +72,16 @@ impl AddOffsetsToTxnRequest {
         }
         let mut msg = AddOffsetsToTxnRequest::default();
         {
-            msg.transactional_id = (if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.transactional_id = TransactionalId((if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
-            msg.producer_id = get_i64(buf)?;
+            msg.producer_id = ProducerId(get_i64(buf)?);
         }
         {
             msg.producer_epoch = get_i16(buf)?;
         }
         {
-            msg.group_id = (if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.group_id = GroupId((if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         if version >= 3 { msg.tagged_fields = get_tagged_fields(buf)?; }
         Ok(msg)

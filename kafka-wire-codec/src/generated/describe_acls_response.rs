@@ -1,15 +1,17 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone)]
 pub struct DescribeAclsResource {
     /// The resource type.
     pub resource_type: i8,
     /// The resource name.
-    pub resource_name: Bytes,
+    pub resource_name: StrBytes,
     /// The resource pattern type.
     pub pattern_type: i8,
     /// The ACLs.
@@ -22,7 +24,7 @@ impl Default for DescribeAclsResource {
     fn default() -> Self {
         Self {
             resource_type: 0,
-            resource_name: Bytes::new(),
+            resource_name: StrBytes::new(),
             pattern_type: 3,
             acls: Vec::new(),
             tagged_fields: Vec::new(),
@@ -37,7 +39,7 @@ impl DescribeAclsResource {
             size += 1;
         }
         {
-            size += if version >= 2 { compact_string_size(&self.resource_name) } else { string_size(&self.resource_name) };
+            size += if version >= 2 { compact_string_size(self.resource_name.as_str()) } else { string_size(self.resource_name.as_str()) };
         }
         if version >= 1 {
             size += 1;
@@ -59,7 +61,7 @@ impl DescribeAclsResource {
             put_i8(buf, self.resource_type);
         }
         {
-            if version >= 2 { put_compact_string(buf, &self.resource_name) } else { put_string(buf, &self.resource_name) };
+            if version >= 2 { put_compact_string(buf, self.resource_name.as_str()) } else { put_string(buf, self.resource_name.as_str()) };
         }
         if version >= 1 {
             put_i8(buf, self.pattern_type);
@@ -99,9 +101,9 @@ impl DescribeAclsResource {
 #[derive(Debug, Clone, Default)]
 pub struct AclDescription {
     /// The ACL principal.
-    pub principal: Bytes,
+    pub principal: StrBytes,
     /// The ACL host.
-    pub host: Bytes,
+    pub host: StrBytes,
     /// The ACL operation.
     pub operation: i8,
     /// The ACL permission type.
@@ -114,10 +116,10 @@ impl AclDescription {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 2 { compact_string_size(&self.principal) } else { string_size(&self.principal) };
+            size += if version >= 2 { compact_string_size(self.principal.as_str()) } else { string_size(self.principal.as_str()) };
         }
         {
-            size += if version >= 2 { compact_string_size(&self.host) } else { string_size(&self.host) };
+            size += if version >= 2 { compact_string_size(self.host.as_str()) } else { string_size(self.host.as_str()) };
         }
         {
             size += 1;
@@ -131,10 +133,10 @@ impl AclDescription {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 2 { put_compact_string(buf, &self.principal) } else { put_string(buf, &self.principal) };
+            if version >= 2 { put_compact_string(buf, self.principal.as_str()) } else { put_string(buf, self.principal.as_str()) };
         }
         {
-            if version >= 2 { put_compact_string(buf, &self.host) } else { put_string(buf, &self.host) };
+            if version >= 2 { put_compact_string(buf, self.host.as_str()) } else { put_string(buf, self.host.as_str()) };
         }
         {
             put_i8(buf, self.operation);
@@ -172,7 +174,7 @@ pub struct DescribeAclsResponse {
     /// The error code, or 0 if there was no error.
     pub error_code: i16,
     /// The error message, or null if there was no error.
-    pub error_message: Option<Bytes>,
+    pub error_message: Option<StrBytes>,
     /// Each Resource that is referenced in an ACL.
     pub resources: Vec<DescribeAclsResource>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -184,7 +186,7 @@ impl Default for DescribeAclsResponse {
         Self {
             throttle_time_ms: 0,
             error_code: 0,
-            error_message: Some(Bytes::new()),
+            error_message: Some(StrBytes::new()),
             resources: Vec::new(),
             tagged_fields: Vec::new(),
         }
@@ -209,7 +211,7 @@ impl DescribeAclsResponse {
             size += 2;
         }
         {
-            size += if version >= 2 { compact_nullable_string_size(self.error_message.as_deref()) } else { nullable_string_size(self.error_message.as_deref()) };
+            size += if version >= 2 { compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) } else { nullable_string_size(self.error_message.as_ref().map(|v| v.as_str())) };
         }
         {
             { let arr = &self.resources;
@@ -233,7 +235,7 @@ impl DescribeAclsResponse {
             put_i16(buf, self.error_code);
         }
         {
-            if version >= 2 { put_compact_nullable_string(buf, self.error_message.as_deref()) } else { put_nullable_string(buf, self.error_message.as_deref()) };
+            if version >= 2 { put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) } else { put_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str())) };
         }
         {
             { let arr = &self.resources;

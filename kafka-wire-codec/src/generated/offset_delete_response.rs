@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct OffsetDeleteResponseTopic {
     /// The topic name.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The responses for each partition in the topic.
     pub partitions: Vec<OffsetDeleteResponsePartition>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl OffsetDeleteResponseTopic {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += string_size(&self.name);
+            size += string_size(self.name.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -33,7 +35,7 @@ impl OffsetDeleteResponseTopic {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            put_string(buf, &self.name);
+            put_string(buf, self.name.as_str());
         }
         {
             { let arr = &self.partitions;
@@ -46,7 +48,7 @@ impl OffsetDeleteResponseTopic {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = OffsetDeleteResponseTopic::default();
         {
-            msg.name = (get_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((get_string(buf)?).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } };

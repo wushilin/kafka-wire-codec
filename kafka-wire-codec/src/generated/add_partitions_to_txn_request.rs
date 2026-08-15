@@ -1,13 +1,15 @@
-#![allow(unused_variables, clippy::manual_range_contains)]
+#![allow(unused_variables, unused_imports, clippy::manual_range_contains)]
 
 use bytes::Bytes;
+use uuid::Uuid;
 use crate::codec::*;
 use crate::error::DecodeError;
+use crate::types::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct AddPartitionsToTxnTopic {
     /// The name of the topic.
-    pub name: Bytes,
+    pub name: TopicName,
     /// The partition indexes to add to the transaction.
     pub partitions: Vec<i32>,
     /// Raw tagged fields (flexible versions), in ascending tag order.
@@ -18,7 +20,7 @@ impl AddPartitionsToTxnTopic {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         {
-            size += if version >= 3 { compact_string_size(&self.name) } else { string_size(&self.name) };
+            size += if version >= 3 { compact_string_size(self.name.as_str()) } else { string_size(self.name.as_str()) };
         }
         {
             { let arr = &self.partitions;
@@ -32,7 +34,7 @@ impl AddPartitionsToTxnTopic {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         {
-            if version >= 3 { put_compact_string(buf, &self.name) } else { put_string(buf, &self.name) };
+            if version >= 3 { put_compact_string(buf, self.name.as_str()) } else { put_string(buf, self.name.as_str()) };
         }
         {
             { let arr = &self.partitions;
@@ -46,7 +48,7 @@ impl AddPartitionsToTxnTopic {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = AddPartitionsToTxnTopic::default();
         {
-            msg.name = (if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.name = TopicName((if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         {
             let len_opt = if version >= 3 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };
@@ -63,9 +65,9 @@ impl AddPartitionsToTxnTopic {
 #[derive(Debug, Clone, Default)]
 pub struct AddPartitionsToTxnTransaction {
     /// The transactional id corresponding to the transaction.
-    pub transactional_id: Bytes,
+    pub transactional_id: TransactionalId,
     /// Current producer id in use by the transactional id.
-    pub producer_id: i64,
+    pub producer_id: ProducerId,
     /// Current epoch associated with the producer id.
     pub producer_epoch: i16,
     /// Boolean to signify if we want to check if the partition is in the transaction rather than add it.
@@ -80,7 +82,7 @@ impl AddPartitionsToTxnTransaction {
     pub fn encoded_size(&self, version: i16) -> usize {
         let mut size = 0usize;
         if version >= 4 {
-            size += if version >= 3 { compact_string_size(&self.transactional_id) } else { string_size(&self.transactional_id) };
+            size += if version >= 3 { compact_string_size(self.transactional_id.as_str()) } else { string_size(self.transactional_id.as_str()) };
         }
         if version >= 4 {
             size += 8;
@@ -105,10 +107,10 @@ impl AddPartitionsToTxnTransaction {
 
     pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
         if version >= 4 {
-            if version >= 3 { put_compact_string(buf, &self.transactional_id) } else { put_string(buf, &self.transactional_id) };
+            if version >= 3 { put_compact_string(buf, self.transactional_id.as_str()) } else { put_string(buf, self.transactional_id.as_str()) };
         }
         if version >= 4 {
-            put_i64(buf, self.producer_id);
+            put_i64(buf, self.producer_id.0);
         }
         if version >= 4 {
             put_i16(buf, self.producer_epoch);
@@ -128,10 +130,10 @@ impl AddPartitionsToTxnTransaction {
     pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
         let mut msg = AddPartitionsToTxnTransaction::default();
         if version >= 4 {
-            msg.transactional_id = (if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.transactional_id = TransactionalId((if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         if version >= 4 {
-            msg.producer_id = get_i64(buf)?;
+            msg.producer_id = ProducerId(get_i64(buf)?);
         }
         if version >= 4 {
             msg.producer_epoch = get_i16(buf)?;
@@ -157,9 +159,9 @@ pub struct AddPartitionsToTxnRequest {
     /// List of transactions to add partitions to.
     pub transactions: Vec<AddPartitionsToTxnTransaction>,
     /// The transactional id corresponding to the transaction.
-    pub v3_and_below_transactional_id: Bytes,
+    pub v3_and_below_transactional_id: TransactionalId,
     /// Current producer id in use by the transactional id.
-    pub v3_and_below_producer_id: i64,
+    pub v3_and_below_producer_id: ProducerId,
     /// Current epoch associated with the producer id.
     pub v3_and_below_producer_epoch: i16,
     /// The partitions to add to the transaction.
@@ -188,7 +190,7 @@ impl AddPartitionsToTxnRequest {
             }
         }
         if version <= 3 {
-            size += if version >= 3 { compact_string_size(&self.v3_and_below_transactional_id) } else { string_size(&self.v3_and_below_transactional_id) };
+            size += if version >= 3 { compact_string_size(self.v3_and_below_transactional_id.as_str()) } else { string_size(self.v3_and_below_transactional_id.as_str()) };
         }
         if version <= 3 {
             size += 8;
@@ -218,10 +220,10 @@ impl AddPartitionsToTxnRequest {
             }
         }
         if version <= 3 {
-            if version >= 3 { put_compact_string(buf, &self.v3_and_below_transactional_id) } else { put_string(buf, &self.v3_and_below_transactional_id) };
+            if version >= 3 { put_compact_string(buf, self.v3_and_below_transactional_id.as_str()) } else { put_string(buf, self.v3_and_below_transactional_id.as_str()) };
         }
         if version <= 3 {
-            put_i64(buf, self.v3_and_below_producer_id);
+            put_i64(buf, self.v3_and_below_producer_id.0);
         }
         if version <= 3 {
             put_i16(buf, self.v3_and_below_producer_epoch);
@@ -248,10 +250,10 @@ impl AddPartitionsToTxnRequest {
             msg.transactions = items; }
         }
         if version <= 3 {
-            msg.v3_and_below_transactional_id = (if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+            msg.v3_and_below_transactional_id = TransactionalId((if version >= 3 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?);
         }
         if version <= 3 {
-            msg.v3_and_below_producer_id = get_i64(buf)?;
+            msg.v3_and_below_producer_id = ProducerId(get_i64(buf)?);
         }
         if version <= 3 {
             msg.v3_and_below_producer_epoch = get_i16(buf)?;
