@@ -1,0 +1,274 @@
+#![allow(unused_variables, clippy::manual_range_contains)]
+
+use bytes::Bytes;
+use crate::codec::*;
+use crate::error::DecodeError;
+
+#[derive(Debug, Clone, Default)]
+pub struct TopicData {
+    /// The topic name.
+    pub topic_name: Bytes,
+    /// The partition data.
+    pub partitions: Vec<PartitionData>,
+    /// Raw tagged fields (flexible versions), in ascending tag order.
+    pub tagged_fields: Vec<(u32, Bytes)>,
+}
+
+impl TopicData {
+    pub fn encoded_size(&self, version: i16) -> usize {
+        let mut size = 0usize;
+        {
+            size += if version >= 1 { compact_string_size(&self.topic_name) } else { string_size(&self.topic_name) };
+        }
+        {
+            { let arr = &self.partitions;
+                if version >= 1 { size += uvarint_size(arr.len() as u64 + 1); } else { size += 4; }
+                for item in arr {
+                    size += item.encoded_size(version);
+                }
+            }
+        }
+        if version >= 1 { size += tagged_fields_size(&self.tagged_fields); }
+        size
+    }
+
+    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
+        {
+            if version >= 1 { put_compact_string(buf, &self.topic_name) } else { put_string(buf, &self.topic_name) };
+        }
+        {
+            { let arr = &self.partitions;
+                if version >= 1 { put_uvarint(buf, arr.len() as u64 + 1); } else { put_i32(buf, arr.len() as i32); }
+                for item in arr { item.encode(version, buf); }
+            }
+        }
+        if version >= 1 { put_tagged_fields(buf, &self.tagged_fields); }
+    }
+
+    pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
+        let mut msg = TopicData::default();
+        {
+            msg.topic_name = (if version >= 1 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+        }
+        {
+            let len_opt = if version >= 1 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };
+            let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
+            { let mut items = Vec::with_capacity(count.min(buf.len()));
+                for _ in 0..count { items.push(PartitionData::decode(version, buf)?); }
+            msg.partitions = items; }
+        }
+        if version >= 1 { msg.tagged_fields = get_tagged_fields(buf)?; }
+        Ok(msg)
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PartitionData {
+    /// The partition index.
+    pub partition_index: i32,
+    /// The partition level error code.
+    pub error_code: i16,
+    /// The ID of the current leader or -1 if the leader is unknown.
+    pub leader_id: i32,
+    /// The latest known leader epoch.
+    pub leader_epoch: i32,
+    /// Raw tagged fields (flexible versions), in ascending tag order.
+    pub tagged_fields: Vec<(u32, Bytes)>,
+}
+
+impl PartitionData {
+    pub fn encoded_size(&self, version: i16) -> usize {
+        let mut size = 0usize;
+        {
+            size += 4;
+        }
+        {
+            size += 2;
+        }
+        {
+            size += 4;
+        }
+        {
+            size += 4;
+        }
+        if version >= 1 { size += tagged_fields_size(&self.tagged_fields); }
+        size
+    }
+
+    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
+        {
+            put_i32(buf, self.partition_index);
+        }
+        {
+            put_i16(buf, self.error_code);
+        }
+        {
+            put_i32(buf, self.leader_id);
+        }
+        {
+            put_i32(buf, self.leader_epoch);
+        }
+        if version >= 1 { put_tagged_fields(buf, &self.tagged_fields); }
+    }
+
+    pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
+        let mut msg = PartitionData::default();
+        {
+            msg.partition_index = get_i32(buf)?;
+        }
+        {
+            msg.error_code = get_i16(buf)?;
+        }
+        {
+            msg.leader_id = get_i32(buf)?;
+        }
+        {
+            msg.leader_epoch = get_i32(buf)?;
+        }
+        if version >= 1 { msg.tagged_fields = get_tagged_fields(buf)?; }
+        Ok(msg)
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct NodeEndpoint {
+    /// The ID of the associated node.
+    pub node_id: i32,
+    /// The node's hostname.
+    pub host: Bytes,
+    /// The node's port.
+    pub port: u16,
+    /// Raw tagged fields (flexible versions), in ascending tag order.
+    pub tagged_fields: Vec<(u32, Bytes)>,
+}
+
+impl NodeEndpoint {
+    pub fn encoded_size(&self, version: i16) -> usize {
+        let mut size = 0usize;
+        if version >= 1 {
+            size += 4;
+        }
+        if version >= 1 {
+            size += if version >= 1 { compact_string_size(&self.host) } else { string_size(&self.host) };
+        }
+        if version >= 1 {
+            size += 2;
+        }
+        if version >= 1 { size += tagged_fields_size(&self.tagged_fields); }
+        size
+    }
+
+    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
+        if version >= 1 {
+            put_i32(buf, self.node_id);
+        }
+        if version >= 1 {
+            if version >= 1 { put_compact_string(buf, &self.host) } else { put_string(buf, &self.host) };
+        }
+        if version >= 1 {
+            put_u16(buf, self.port);
+        }
+        if version >= 1 { put_tagged_fields(buf, &self.tagged_fields); }
+    }
+
+    pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
+        let mut msg = NodeEndpoint::default();
+        if version >= 1 {
+            msg.node_id = get_i32(buf)?;
+        }
+        if version >= 1 {
+            msg.host = (if version >= 1 { get_compact_string(buf)? } else { get_string(buf)? }).ok_or(DecodeError::NullForNonNullable)?;
+        }
+        if version >= 1 {
+            msg.port = get_u16(buf)?;
+        }
+        if version >= 1 { msg.tagged_fields = get_tagged_fields(buf)?; }
+        Ok(msg)
+    }
+}
+
+/// Valid versions: 0-1.
+#[derive(Debug, Clone, Default)]
+pub struct EndQuorumEpochResponse {
+    /// The top level error code.
+    pub error_code: i16,
+    /// The topic data.
+    pub topics: Vec<TopicData>,
+    /// Raw tagged fields (flexible versions), in ascending tag order.
+    pub tagged_fields: Vec<(u32, Bytes)>,
+}
+
+impl EndQuorumEpochResponse {
+    pub const API_KEY: i16 = 54;
+    pub const VALID_MIN_VERSION: i16 = 0;
+    pub const VALID_MAX_VERSION: i16 = 1;
+    /// First flexible (tagged-fields) version; `i16::MAX` if never flexible.
+    pub const FLEXIBLE_MIN_VERSION: i16 = 1;
+
+    pub fn encoded_size(&self, version: i16) -> usize {
+        assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
+            "unsupported version {} for api key {}", version, Self::API_KEY);
+        let mut size = 0usize;
+        {
+            size += 2;
+        }
+        {
+            { let arr = &self.topics;
+                if version >= 1 { size += uvarint_size(arr.len() as u64 + 1); } else { size += 4; }
+                for item in arr {
+                    size += item.encoded_size(version);
+                }
+            }
+        }
+        if version >= 1 { size += tagged_fields_size(&self.tagged_fields); }
+        size
+    }
+
+    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
+        assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
+            "unsupported version {} for api key {}", version, Self::API_KEY);
+        {
+            put_i16(buf, self.error_code);
+        }
+        {
+            { let arr = &self.topics;
+                if version >= 1 { put_uvarint(buf, arr.len() as u64 + 1); } else { put_i32(buf, arr.len() as i32); }
+                for item in arr { item.encode(version, buf); }
+            }
+        }
+        if version >= 1 { put_tagged_fields(buf, &self.tagged_fields); }
+    }
+
+    pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
+        if !(Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version) {
+            return Err(DecodeError::UnsupportedVersion { api_key: Self::API_KEY, version });
+        }
+        let mut msg = EndQuorumEpochResponse::default();
+        {
+            msg.error_code = get_i16(buf)?;
+        }
+        {
+            let len_opt = if version >= 1 { { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } } } else { { let n = get_i32(buf)?; if n < 0 { None } else { Some(n as usize) } } };
+            let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
+            { let mut items = Vec::with_capacity(count.min(buf.len()));
+                for _ in 0..count { items.push(TopicData::decode(version, buf)?); }
+            msg.topics = items; }
+        }
+        if version >= 1 { msg.tagged_fields = get_tagged_fields(buf)?; }
+        Ok(msg)
+    }
+}
+
+impl crate::Encodable for EndQuorumEpochResponse {
+    const API_KEY: i16 = 54;
+    const VALID_MIN_VERSION: i16 = 0;
+    const VALID_MAX_VERSION: i16 = 1;
+    const FLEXIBLE_MIN_VERSION: i16 = 1;
+    fn wire_size(&self, version: i16) -> usize { self.encoded_size(version) }
+    fn write(&self, version: i16, buf: &mut bytes::BytesMut) { self.encode(version, buf) }
+    fn read(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> { Self::decode(version, buf) }
+}
+
+impl crate::EncodableZeroCopy for EndQuorumEpochResponse {
+    fn write_segmented(&self, version: i16, buf: &mut SegmentedBuf) { self.encode(version, buf) }
+}

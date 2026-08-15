@@ -1,0 +1,25 @@
+[package]
+name = "kafka-wire-codec"
+version = "0.1.0"
+edition = "2021"
+description = "Zero-copy Apache Kafka wire protocol codec: every RPC and version generated from the official schemas, byte-for-byte cross-checked against the Java client"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/wushilin/kafka-wire-codec"
+readme = "../README.md"
+keywords = ["kafka", "protocol", "codec", "zero-copy", "proxy"]
+categories = ["network-programming", "encoding", "parser-implementations"]
+# Integration tests need the Java compat harness from the repo; exclude them
+# from the published package.
+exclude = ["tests/"]
+
+[features]
+default = ["async"]
+async = ["dep:tokio"]
+
+[dependencies]
+bytes = "1"
+tokio = { version = "1", features = ["io-util"], optional = true }
+thiserror = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }

@@ -1,0 +1,252 @@
+#![allow(unused_variables, clippy::manual_range_contains)]
+
+use bytes::Bytes;
+use crate::codec::*;
+use crate::error::DecodeError;
+
+#[derive(Debug, Clone, Default)]
+pub struct Listener {
+    /// The name of the endpoint.
+    pub name: Bytes,
+    /// The hostname.
+    pub host: Bytes,
+    /// The port.
+    pub port: u16,
+    /// Raw tagged fields (flexible versions), in ascending tag order.
+    pub tagged_fields: Vec<(u32, Bytes)>,
+}
+
+impl Listener {
+    pub fn encoded_size(&self, version: i16) -> usize {
+        let mut size = 0usize;
+        {
+            size += compact_string_size(&self.name);
+        }
+        {
+            size += compact_string_size(&self.host);
+        }
+        {
+            size += 2;
+        }
+        size += tagged_fields_size(&self.tagged_fields);
+        size
+    }
+
+    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
+        {
+            put_compact_string(buf, &self.name);
+        }
+        {
+            put_compact_string(buf, &self.host);
+        }
+        {
+            put_u16(buf, self.port);
+        }
+        put_tagged_fields(buf, &self.tagged_fields);
+    }
+
+    pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
+        let mut msg = Listener::default();
+        {
+            msg.name = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+        }
+        {
+            msg.host = (get_compact_string(buf)?).ok_or(DecodeError::NullForNonNullable)?;
+        }
+        {
+            msg.port = get_u16(buf)?;
+        }
+        msg.tagged_fields = get_tagged_fields(buf)?;
+        Ok(msg)
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct KRaftVersionFeature {
+    /// The minimum supported KRaft protocol version.
+    pub min_supported_version: i16,
+    /// The maximum supported KRaft protocol version.
+    pub max_supported_version: i16,
+    /// Raw tagged fields (flexible versions), in ascending tag order.
+    pub tagged_fields: Vec<(u32, Bytes)>,
+}
+
+impl KRaftVersionFeature {
+    pub fn encoded_size(&self, version: i16) -> usize {
+        let mut size = 0usize;
+        {
+            size += 2;
+        }
+        {
+            size += 2;
+        }
+        size += tagged_fields_size(&self.tagged_fields);
+        size
+    }
+
+    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
+        {
+            put_i16(buf, self.min_supported_version);
+        }
+        {
+            put_i16(buf, self.max_supported_version);
+        }
+        put_tagged_fields(buf, &self.tagged_fields);
+    }
+
+    pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
+        let mut msg = KRaftVersionFeature::default();
+        {
+            msg.min_supported_version = get_i16(buf)?;
+        }
+        {
+            msg.max_supported_version = get_i16(buf)?;
+        }
+        msg.tagged_fields = get_tagged_fields(buf)?;
+        Ok(msg)
+    }
+}
+
+/// Valid versions: 0-0.
+#[derive(Debug, Clone)]
+pub struct UpdateRaftVoterRequest {
+    /// The cluster id.
+    pub cluster_id: Option<Bytes>,
+    /// The current leader epoch of the partition, -1 for unknown leader epoch.
+    pub current_leader_epoch: i32,
+    /// The replica id of the voter getting updated in the topic partition.
+    pub voter_id: i32,
+    /// The directory id of the voter getting updated in the topic partition.
+    pub voter_directory_id: [u8; 16],
+    /// The endpoint that can be used to communicate with the leader.
+    pub listeners: Vec<Listener>,
+    /// The range of versions of the protocol that the replica supports.
+    pub k_raft_version_feature: KRaftVersionFeature,
+    /// Raw tagged fields (flexible versions), in ascending tag order.
+    pub tagged_fields: Vec<(u32, Bytes)>,
+}
+
+impl Default for UpdateRaftVoterRequest {
+    fn default() -> Self {
+        Self {
+            cluster_id: Some(Bytes::new()),
+            current_leader_epoch: 0,
+            voter_id: 0,
+            voter_directory_id: [0u8; 16],
+            listeners: Vec::new(),
+            k_raft_version_feature: KRaftVersionFeature::default(),
+            tagged_fields: Vec::new(),
+        }
+    }
+}
+
+impl UpdateRaftVoterRequest {
+    pub const API_KEY: i16 = 82;
+    pub const VALID_MIN_VERSION: i16 = 0;
+    pub const VALID_MAX_VERSION: i16 = 0;
+    /// First flexible (tagged-fields) version; `i16::MAX` if never flexible.
+    pub const FLEXIBLE_MIN_VERSION: i16 = 0;
+
+    pub fn encoded_size(&self, version: i16) -> usize {
+        assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
+            "unsupported version {} for api key {}", version, Self::API_KEY);
+        let mut size = 0usize;
+        {
+            size += compact_nullable_string_size(self.cluster_id.as_deref());
+        }
+        {
+            size += 4;
+        }
+        {
+            size += 4;
+        }
+        {
+            size += 16;
+        }
+        {
+            { let arr = &self.listeners;
+                size += uvarint_size(arr.len() as u64 + 1);
+                for item in arr {
+                    size += item.encoded_size(version);
+                }
+            }
+        }
+        {
+            size += self.k_raft_version_feature.encoded_size(version);
+        }
+        size += tagged_fields_size(&self.tagged_fields);
+        size
+    }
+
+    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
+        assert!((Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version),
+            "unsupported version {} for api key {}", version, Self::API_KEY);
+        {
+            put_compact_nullable_string(buf, self.cluster_id.as_deref());
+        }
+        {
+            put_i32(buf, self.current_leader_epoch);
+        }
+        {
+            put_i32(buf, self.voter_id);
+        }
+        {
+            put_uuid(buf, &self.voter_directory_id);
+        }
+        {
+            { let arr = &self.listeners;
+                put_uvarint(buf, arr.len() as u64 + 1);
+                for item in arr { item.encode(version, buf); }
+            }
+        }
+        {
+            self.k_raft_version_feature.encode(version, buf);
+        }
+        put_tagged_fields(buf, &self.tagged_fields);
+    }
+
+    pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {
+        if !(Self::VALID_MIN_VERSION..=Self::VALID_MAX_VERSION).contains(&version) {
+            return Err(DecodeError::UnsupportedVersion { api_key: Self::API_KEY, version });
+        }
+        let mut msg = UpdateRaftVoterRequest::default();
+        {
+            msg.cluster_id = get_compact_string(buf)?;
+        }
+        {
+            msg.current_leader_epoch = get_i32(buf)?;
+        }
+        {
+            msg.voter_id = get_i32(buf)?;
+        }
+        {
+            msg.voter_directory_id = get_uuid(buf)?;
+        }
+        {
+            let len_opt = { let n = get_uvarint32(buf)?; if n == 0 { None } else { Some((n - 1) as usize) } };
+            let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
+            { let mut items = Vec::with_capacity(count.min(buf.len()));
+                for _ in 0..count { items.push(Listener::decode(version, buf)?); }
+            msg.listeners = items; }
+        }
+        {
+            msg.k_raft_version_feature = KRaftVersionFeature::decode(version, buf)?;
+        }
+        msg.tagged_fields = get_tagged_fields(buf)?;
+        Ok(msg)
+    }
+}
+
+impl crate::Encodable for UpdateRaftVoterRequest {
+    const API_KEY: i16 = 82;
+    const VALID_MIN_VERSION: i16 = 0;
+    const VALID_MAX_VERSION: i16 = 0;
+    const FLEXIBLE_MIN_VERSION: i16 = 0;
+    fn wire_size(&self, version: i16) -> usize { self.encoded_size(version) }
+    fn write(&self, version: i16, buf: &mut bytes::BytesMut) { self.encode(version, buf) }
+    fn read(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> { Self::decode(version, buf) }
+}
+
+impl crate::EncodableZeroCopy for UpdateRaftVoterRequest {
+    fn write_segmented(&self, version: i16, buf: &mut SegmentedBuf) { self.encode(version, buf) }
+}

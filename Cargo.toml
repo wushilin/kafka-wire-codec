@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "kafka-codegen",
+    "kafka-wire-codec",
+]
+resolver = "2"
