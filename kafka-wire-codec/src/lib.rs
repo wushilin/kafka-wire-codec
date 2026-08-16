@@ -11,7 +11,7 @@ pub use bytes::{Bytes, BytesMut};
 pub use codec::chain::ChunkChain;
 pub use codec::{SegmentedBuf, WireBuf, DEFAULT_ZERO_COPY_THRESHOLD};
 pub use frame::SuppliedFrame;
-pub use supply::{BufferSupplier, DefaultSupplier, ReadStrategy};
+pub use supply::{BufferSupplier, DefaultSupplier, PoolStats, PooledSupplier, ReadStrategy};
 pub use error::{DecodeError, EncodeError};
 pub use generated::api_constants::ApiKey;
 pub use generated::kinds::{RequestKind, ResponseKind};

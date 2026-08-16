@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.6.0 — 2026-08-16
+
+Kafka schema tag: **4.3.1** (unchanged). Compat: 1002/1002, 68 shell-verified.
+
+The chunk return path + a built-in pool:
+
+- `BufferSupplier::seal(buf) -> Bytes` (defaulted: freeze, so 0.5.0 suppliers
+  keep working unchanged): the codec now routes every filled buffer through
+  the supplier, giving pools a real reclaim hook. This fixes a 0.5.0 design
+  gap — `acquire` hands out unique `BytesMut`, so without `seal` a pooling
+  supplier had no way to ever see its chunks again.
+- `PooledSupplier::new(chunk_size, max_standby)`: batteries-included uniform
+  chunk pool, no trait implementation needed. Chunks are wrapped in a
+  drop-returning owner (`Bytes::from_owner`), so they return to the pool when
+  the LAST slice referencing them drops — on whatever thread finishes the
+  outbound write. Frames that fit one chunk are read contiguously into a
+  single pooled block; `stats()` (in-flight / standby / created / reused /
+  high-watermark) and `trim()` included. Chunks whose only surviving content
+  was coalesced below the zero-copy threshold return early.
+- `bytes` dependency raised to 1.9 (for `Bytes::from_owner`).
+
 ## 0.5.0 — 2026-08-16
 
 Kafka schema tag: **4.3.1** (unchanged). Compat: 1002/1002 records

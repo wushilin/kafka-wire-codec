@@ -1,6 +1,6 @@
 [package]
 name = "kafka-wire-codec"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 description = "Zero-copy Apache Kafka wire protocol codec: every RPC and version generated from the official schemas, byte-for-byte cross-checked against the Java client"
 license = "MIT OR Apache-2.0"
@@ -17,7 +17,8 @@ default = ["async"]
 async = ["dep:tokio"]
 
 [dependencies]
-bytes = "1"
+# 1.9+ for Bytes::from_owner (PooledSupplier's drop-returning chunks).
+bytes = "1.9"
 uuid = "1"
 tokio = { version = "1", features = ["io-util"], optional = true }
 thiserror = "2"

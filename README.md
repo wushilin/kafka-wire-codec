@@ -71,12 +71,23 @@ match frame::read_frame_supplied(&mut stream, &supplier)? {
 }
 ```
 
-Implement `BufferSupplier` yourself to route chunk allocation through your own
-pool or spool: `strategy(frame_len)` sees the exact frame length before any
-body byte is read (threshold, admission control), and `acquire(len)` provides
-the buffers (malloc, borrow, pin — the codec never knows). The shell path is
-verified by the compat suite: every records-bearing Java fixture is chunk-split
-(down to 7-byte chunks), shell-decoded, re-encoded, and byte-compared.
+**Pooling is built in.** `PooledSupplier::new(chunk_size, max_standby)` is a
+ready-made uniform chunk pool: frames up to one chunk read contiguously into a
+single pooled block, larger frames chunked; every chunk returns to the pool
+automatically when its last `Bytes` reference drops (via a drop-returning
+owner attached in `BufferSupplier::seal`) — cargo slices, outbound frame
+segments and decoded field slices included. `stats()` exposes
+in-flight/standby/high-watermark counters; `trim()` frees standby after a
+burst. Steady state: zero allocations, zero page-fault churn, no fragmentation
+(uniform blocks), memory ∝ concurrently in-flight large frames.
+
+Or implement `BufferSupplier` yourself to route buffers through your own pool
+or spool: `strategy(frame_len)` sees the exact frame length before any body
+byte is read (threshold, admission control), `acquire(len)` provides buffers,
+and `seal(buf)` is the return path — attach your own drop-time reclaim, or
+leave the default (freeze, drop = free). The shell path is verified by the
+compat suite: every records-bearing Java fixture is chunk-split (down to
+7-byte chunks), shell-decoded, re-encoded, and byte-compared.
 
 ## Workspace layout
 

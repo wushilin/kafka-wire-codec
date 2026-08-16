@@ -277,7 +277,7 @@ pub fn read_frame_supplied_with_limit<R: Read, S: BufferSupplier + ?Sized>(
         ReadStrategy::Contiguous => {
             let mut buf = supplier.acquire(len);
             read_exact_into(reader, &mut buf, len)?;
-            Ok(SuppliedFrame::Contiguous(buf.freeze()))
+            Ok(SuppliedFrame::Contiguous(supplier.seal(buf)))
         }
         ReadStrategy::Chunked { chunk_size } => {
             let chunk_size = chunk_size.max(1);
@@ -287,7 +287,7 @@ pub fn read_frame_supplied_with_limit<R: Read, S: BufferSupplier + ?Sized>(
                 let want = left.min(chunk_size);
                 let mut buf = supplier.acquire(want);
                 read_exact_into(reader, &mut buf, want)?;
-                chunks.push(buf.freeze());
+                chunks.push(supplier.seal(buf));
                 left -= want;
             }
             Ok(SuppliedFrame::Chunked(ChunkChain::new(chunks)))
@@ -356,7 +356,7 @@ where
         ReadStrategy::Contiguous => {
             let mut buf = supplier.acquire(len);
             fill_async(reader, &mut buf, len).await?;
-            Ok(SuppliedFrame::Contiguous(buf.freeze()))
+            Ok(SuppliedFrame::Contiguous(supplier.seal(buf)))
         }
         ReadStrategy::Chunked { chunk_size } => {
             let chunk_size = chunk_size.max(1);
@@ -366,7 +366,7 @@ where
                 let want = left.min(chunk_size);
                 let mut buf = supplier.acquire(want);
                 fill_async(reader, &mut buf, want).await?;
-                chunks.push(buf.freeze());
+                chunks.push(supplier.seal(buf));
                 left -= want;
             }
             Ok(SuppliedFrame::Chunked(ChunkChain::new(chunks)))

@@ -213,6 +213,111 @@ fn produce_request_shell_roundtrip() {
 }
 
 #[test]
+fn pooled_supplier_reuses_chunks_across_frames() {
+    use kafka_wire_codec::PooledSupplier;
+    let pool = PooledSupplier::new(64, 8);
+
+    let mut wire = (100i32).to_be_bytes().to_vec();
+    wire.extend_from_slice(&[0x61u8; 100]);
+
+    // Frame 1: chunked (100 > 64), ceil(100/64) = 2 chunks, all fresh.
+    let f1 = frame::read_frame_supplied(&mut wire.as_slice(), &pool).unwrap();
+    let ptrs1: Vec<usize> = match &f1 {
+        SuppliedFrame::Chunked(ch) => {
+            assert_eq!(ch.remaining(), 100);
+            // Capture allocation identities via the pool stats instead of
+            // reaching into the chain; drop returns them below.
+            vec![]
+        }
+        _ => panic!("expected chunked"),
+    };
+    let _ = ptrs1;
+    let s = pool.stats();
+    assert_eq!((s.in_flight, s.created, s.reused), (2, 2, 0));
+
+    // Dropping the frame returns both chunks to standby.
+    drop(f1);
+    let s = pool.stats();
+    assert_eq!((s.in_flight, s.standby), (0, 2));
+
+    // Frame 2: served entirely from standby — zero new allocations.
+    let mut wire2 = (100i32).to_be_bytes().to_vec();
+    wire2.extend_from_slice(&[0x62u8; 100]);
+    let f2 = frame::read_frame_supplied(&mut wire2.as_slice(), &pool).unwrap();
+    let s = pool.stats();
+    assert_eq!((s.in_flight, s.created, s.reused), (2, 2, 2));
+    assert_eq!(s.high_watermark, 2);
+    drop(f2);
+
+    // Small frame (≤ chunk_size): contiguous fast path, still pooled.
+    let mut wire3 = (5i32).to_be_bytes().to_vec();
+    wire3.extend_from_slice(b"small");
+    let f3 = frame::read_frame_supplied(&mut wire3.as_slice(), &pool).unwrap();
+    assert!(matches!(f3, SuppliedFrame::Contiguous(_)));
+    assert_eq!(pool.stats().reused, 3);
+    drop(f3);
+
+    // trim() frees standby.
+    pool.trim();
+    assert_eq!(pool.stats().standby, 0);
+}
+
+#[test]
+fn pooled_supplier_returns_only_after_last_slice_drops() {
+    use kafka_wire_codec::PooledSupplier;
+    let pool = PooledSupplier::new(1 << 20, 8);
+
+    let version = 16i16;
+    let records = Bytes::from(vec![0x41u8; 2 << 20]); // 2 MiB -> chunked
+    let inbound = big_fetch_response(records).to_bytes(version).unwrap().freeze();
+    let mut framed = ((inbound.len() as i32).to_be_bytes()).to_vec();
+    framed.extend_from_slice(&inbound);
+
+    let mut ch = match frame::read_frame_supplied(&mut framed.as_slice(), &pool).unwrap() {
+        SuppliedFrame::Chunked(ch) => ch,
+        _ => panic!("expected chunked"),
+    };
+    let shell = FetchResponseShell::decode_chained(version, &mut ch).unwrap();
+    drop(ch);
+    // Cargo slices still hold the chunks: nothing returned yet.
+    assert_eq!(pool.stats().standby, 0);
+    assert!(pool.stats().in_flight > 0);
+
+    // Encode into an outbound frame (chunks pass by refcount), drop the shell.
+    // The two 1 MiB cargo chunks stay pinned by the frame segments; the third
+    // chunk's tiny cargo tail fell below the zero-copy threshold and was
+    // coalesced (copied) into the scratch segment, so that chunk returns to
+    // the pool EARLY — a feature, not a leak.
+    let mut seg = SegmentedBuf::new();
+    shell.encode(version, &mut seg).unwrap();
+    let out = EncodedFrame::from_segments(seg);
+    drop(shell);
+    let s = pool.stats();
+    assert!(s.in_flight >= 2, "big cargo chunks must stay pinned");
+    assert!(s.standby <= 1, "at most the coalesced tail chunk returns early");
+
+    // Once the outbound frame is dropped (== written), every chunk returns.
+    drop(out);
+    let s = pool.stats();
+    assert_eq!(s.in_flight, 0);
+    assert_eq!(s.standby, s.created.min(8));
+}
+
+#[test]
+fn pooled_supplier_watermark_frees_excess() {
+    use kafka_wire_codec::PooledSupplier;
+    let pool = PooledSupplier::new(16, 1); // retain at most ONE standby chunk
+    let mut wire = (48i32).to_be_bytes().to_vec();
+    wire.extend_from_slice(&[0x61u8; 48]);
+    let f = frame::read_frame_supplied(&mut wire.as_slice(), &pool).unwrap();
+    assert_eq!(pool.stats().in_flight, 3);
+    drop(f);
+    let s = pool.stats();
+    // 3 returned, but only 1 retained; 2 freed at the watermark.
+    assert_eq!((s.in_flight, s.standby), (0, 1));
+}
+
+#[test]
 fn records_chunks_equality_ignores_boundaries() {
     let mut a = RecordsChunks::new();
     a.push(Bytes::from_static(b"hello "));
