@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.1 — 2026-08-16
+
+Bugfix: **aborted reads no longer leak pool counters or reuse.** `acquire`
+incremented `in_flight`, but the decrement lived in the seal-attached drop
+hook — so a read failing mid-body (flaky upstream) leaked one `in_flight`
+count per failure, inflated `high_watermark` forever, and freed the chunk
+instead of restocking it. New defaulted `BufferSupplier::abort(buf)` completes
+the pairing contract (every `acquire` is followed by exactly one `seal` on
+success or `abort` on failure, called by the codec at all four read-failure
+sites); `PooledSupplier::abort` decrements and restocks, so flaky peers cost
+neither counter accuracy nor reuse. Regression-tested with 100 consecutive
+mid-body failures: `created` stays 1, `in_flight` returns to 0. Restock takes
+the standby mutex only for a `Vec::push`; watermark-excess frees happen
+outside the lock.
+
+
 ## 0.6.0 — 2026-08-16
 
 Kafka schema tag: **4.3.1** (unchanged). Compat: 1002/1002, 68 shell-verified.

@@ -52,8 +52,19 @@ pub trait BufferSupplier: Send + Sync {
     /// Convert a filled buffer into the `Bytes` the codec will slice. This is
     /// the pool's return path: override to attach a drop-time reclaim (see
     /// [`PooledSupplier`]). The default freezes with no reclaim.
+    ///
+    /// Pairing contract: the codec calls exactly one of `seal` (read
+    /// succeeded) or [`Self::abort`] (read failed) for every buffer obtained
+    /// from [`Self::acquire`] — stateful suppliers can rely on it.
     fn seal(&self, buf: BytesMut) -> Bytes {
         buf.freeze()
+    }
+
+    /// Give back a buffer whose read FAILED before it could be sealed (e.g. a
+    /// mid-body EOF or I/O error). The default drops it; a pooling supplier
+    /// should restock it so a flaky peer doesn't bleed reuse or skew counters.
+    fn abort(&self, buf: BytesMut) {
+        drop(buf);
     }
 }
 
@@ -216,6 +227,24 @@ impl BufferSupplier for PooledSupplier {
             pool: Arc::clone(&self.inner),
         })
     }
+
+    fn abort(&self, buf: BytesMut) {
+        // A failed read: undo the acquire and restock the chunk so flaky
+        // peers cost neither reuse nor counter accuracy.
+        self.inner.restock(buf);
+    }
+}
+
+impl PoolInner {
+    fn restock(&self, mut buf: BytesMut) {
+        self.in_flight.fetch_sub(1, Ordering::Relaxed);
+        buf.clear();
+        let mut standby = self.standby.lock().unwrap();
+        if standby.len() < self.max_standby {
+            standby.push(buf);
+        }
+        // else: drop -> free (watermark trim).
+    }
 }
 
 /// Owner of a pooled chunk while it circulates as `Bytes`.
@@ -232,14 +261,10 @@ impl AsRef<[u8]> for PooledChunk {
 
 impl Drop for PooledChunk {
     fn drop(&mut self) {
-        self.pool.in_flight.fetch_sub(1, Ordering::Relaxed);
-        if let Some(mut b) = self.buf.take() {
-            b.clear();
-            let mut standby = self.pool.standby.lock().unwrap();
-            if standby.len() < self.pool.max_standby {
-                standby.push(b);
-            }
-            // else: drop -> free (watermark trim).
+        if let Some(b) = self.buf.take() {
+            self.pool.restock(b);
+        } else {
+            self.pool.in_flight.fetch_sub(1, Ordering::Relaxed);
         }
     }
 }

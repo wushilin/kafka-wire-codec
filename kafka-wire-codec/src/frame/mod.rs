@@ -276,7 +276,10 @@ pub fn read_frame_supplied_with_limit<R: Read, S: BufferSupplier + ?Sized>(
     match supplier.strategy(len) {
         ReadStrategy::Contiguous => {
             let mut buf = supplier.acquire(len);
-            read_exact_into(reader, &mut buf, len)?;
+            if let Err(e) = read_exact_into(reader, &mut buf, len) {
+                supplier.abort(buf);
+                return Err(e);
+            }
             Ok(SuppliedFrame::Contiguous(supplier.seal(buf)))
         }
         ReadStrategy::Chunked { chunk_size } => {
@@ -286,7 +289,10 @@ pub fn read_frame_supplied_with_limit<R: Read, S: BufferSupplier + ?Sized>(
             while left > 0 {
                 let want = left.min(chunk_size);
                 let mut buf = supplier.acquire(want);
-                read_exact_into(reader, &mut buf, want)?;
+                if let Err(e) = read_exact_into(reader, &mut buf, want) {
+                    supplier.abort(buf);
+                    return Err(e);
+                }
                 chunks.push(supplier.seal(buf));
                 left -= want;
             }
@@ -355,7 +361,10 @@ where
     match supplier.strategy(len) {
         ReadStrategy::Contiguous => {
             let mut buf = supplier.acquire(len);
-            fill_async(reader, &mut buf, len).await?;
+            if let Err(e) = fill_async(reader, &mut buf, len).await {
+                supplier.abort(buf);
+                return Err(e);
+            }
             Ok(SuppliedFrame::Contiguous(supplier.seal(buf)))
         }
         ReadStrategy::Chunked { chunk_size } => {
@@ -365,7 +374,10 @@ where
             while left > 0 {
                 let want = left.min(chunk_size);
                 let mut buf = supplier.acquire(want);
-                fill_async(reader, &mut buf, want).await?;
+                if let Err(e) = fill_async(reader, &mut buf, want).await {
+                    supplier.abort(buf);
+                    return Err(e);
+                }
                 chunks.push(supplier.seal(buf));
                 left -= want;
             }

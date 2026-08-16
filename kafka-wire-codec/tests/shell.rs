@@ -318,6 +318,57 @@ fn pooled_supplier_watermark_frees_excess() {
 }
 
 #[test]
+fn failed_reads_do_not_leak_in_flight_or_lose_reuse() {
+    use kafka_wire_codec::PooledSupplier;
+    let pool = PooledSupplier::new(64, 8);
+
+    // A flaky upstream: the frame declares 32 body bytes but the stream dies
+    // after 10. Every read fails mid-body, AFTER acquire but BEFORE seal.
+    for _ in 0..100 {
+        let mut wire = (32i32).to_be_bytes().to_vec();
+        wire.extend_from_slice(&[0x61u8; 10]);
+        let err = frame::read_frame_supplied(&mut wire.as_slice(), &pool);
+        assert!(err.is_err());
+    }
+
+    // Counters stay exact and the aborted chunk is restocked every time:
+    // ONE allocation ever, 99 reuses, nothing in flight.
+    let s = pool.stats();
+    assert_eq!(s.in_flight, 0, "aborted reads must not leak in_flight");
+    assert_eq!(s.created, 1, "aborted chunks must be restocked, not freed");
+    assert_eq!(s.reused, 99);
+    assert_eq!(s.standby, 1);
+    assert_eq!(s.high_watermark, 1);
+
+    // And a subsequent good frame reuses the same chunk.
+    let mut wire = (5i32).to_be_bytes().to_vec();
+    wire.extend_from_slice(b"hello");
+    let f = frame::read_frame_supplied(&mut wire.as_slice(), &pool).unwrap();
+    assert_eq!(pool.stats().created, 1);
+    assert_eq!(pool.stats().reused, 100);
+    drop(f);
+    assert_eq!(pool.stats().in_flight, 0);
+}
+
+#[tokio::test]
+async fn failed_async_reads_do_not_leak() {
+    use kafka_wire_codec::PooledSupplier;
+    let pool = PooledSupplier::new(16, 8);
+    // Chunked path: 40-byte body (3 chunks) but the stream dies after 20 —
+    // two chunks seal successfully, the third aborts mid-fill.
+    for _ in 0..50 {
+        let mut wire = (40i32).to_be_bytes().to_vec();
+        wire.extend_from_slice(&[0x61u8; 20]);
+        assert!(frame::read_frame_supplied_async(&mut wire.as_slice(), &pool)
+            .await
+            .is_err());
+    }
+    let s = pool.stats();
+    assert_eq!(s.in_flight, 0);
+    assert!(s.created <= 3, "steady-state flaky reads must reuse chunks");
+}
+
+#[test]
 fn records_chunks_equality_ignores_boundaries() {
     let mut a = RecordsChunks::new();
     a.push(Bytes::from_static(b"hello "));
