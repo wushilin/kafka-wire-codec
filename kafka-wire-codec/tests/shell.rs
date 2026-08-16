@@ -315,6 +315,47 @@ fn pooled_supplier_watermark_frees_excess() {
     let s = pool.stats();
     // 3 returned, but only 1 retained; 2 freed at the watermark.
     assert_eq!((s.in_flight, s.standby), (0, 1));
+    assert_eq!(s.freed, 2, "watermark rejections must count as freed");
+    // The accounting invariant holds at every quiescent point.
+    assert_eq!(s.created, s.in_flight + s.standby + s.freed);
+    // trim() frees the retained chunk too.
+    pool.trim();
+    assert_eq!(pool.stats().freed, 3);
+    // Single-threaded: the lock was never contended, no clock was read.
+    assert_eq!(pool.stats().lock_contended, 0);
+    assert_eq!(pool.stats().lock_wait_nanos, 0);
+}
+
+#[test]
+fn pool_counters_under_concurrency() {
+    use kafka_wire_codec::PooledSupplier;
+    let pool = PooledSupplier::new(64, 32);
+    // 8 threads × 500 frames hammering the same pool: counters must balance
+    // exactly, and any lock contention must be visible in the stats.
+    let threads: Vec<_> = (0..8)
+        .map(|_| {
+            let pool = pool.clone();
+            std::thread::spawn(move || {
+                for _ in 0..500 {
+                    let mut wire = (100i32).to_be_bytes().to_vec();
+                    wire.extend_from_slice(&[0x61u8; 100]);
+                    let f = frame::read_frame_supplied(&mut wire.as_slice(), &pool).unwrap();
+                    drop(f);
+                }
+            })
+        })
+        .collect();
+    for t in threads {
+        t.join().unwrap();
+    }
+    let s = pool.stats();
+    assert_eq!(s.in_flight, 0);
+    assert_eq!(s.created, s.standby + s.freed);
+    assert_eq!(s.created + s.reused, 8 * 500 * 2, "2 chunks per 100-byte frame");
+    // Contention stats are consistent (may legitimately be zero on a fast box).
+    if s.lock_contended == 0 {
+        assert_eq!(s.lock_wait_nanos, 0);
+    }
 }
 
 #[test]
@@ -339,6 +380,7 @@ fn failed_reads_do_not_leak_in_flight_or_lose_reuse() {
     assert_eq!(s.reused, 99);
     assert_eq!(s.standby, 1);
     assert_eq!(s.high_watermark, 1);
+    assert_eq!(s.aborted, 100, "every failed read must count as aborted");
 
     // And a subsequent good frame reuses the same chunk.
     let mut wire = (5i32).to_be_bytes().to_vec();

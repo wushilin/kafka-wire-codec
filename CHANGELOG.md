@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.0 — 2026-08-16
+
+Pool observability + tunability (all always-on, free when idle):
+
+- `PoolStats` gains `freed` (watermark rejections + trims; invariant
+  `created == in_flight + standby + freed`), `aborted` (failed/cancelled
+  reads), `lock_contended`, and `lock_wait_nanos`. The struct is now
+  `#[non_exhaustive]` so future counters are non-breaking.
+- Lock-wait timing costs nothing when uncontended: the standby lock is taken
+  `try_lock`-first, and clocks are read only when a wait actually happens —
+  so there is no profiling switch; everything is always on.
+- `PooledSupplier::contiguous_max(n)` (construction-time) decouples the
+  contiguous threshold from `chunk_size` for callers who want small frames
+  chunk-pooled but mid-size frames chunked.
+- Concurrency regression test: 8 threads × 500 frames, counters balance
+  exactly.
+
+
 ## 0.6.2 — 2026-08-16
 
 Bugfix: **async cancellation no longer leaks pool counters or reuse.** An

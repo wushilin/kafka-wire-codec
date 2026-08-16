@@ -126,6 +126,7 @@ pub struct PooledSupplier {
 
 struct PoolInner {
     chunk_size: usize,
+    contiguous_max: usize,
     max_standby: usize,
     standby: Mutex<Vec<BytesMut>>,
     /// Chunks currently out (issued, not yet dropped back).
@@ -136,9 +137,24 @@ struct PoolInner {
     reused: AtomicUsize,
     /// Max in_flight ever observed.
     high_watermark: AtomicUsize,
+    /// Chunks released to the allocator (watermark rejections + trims).
+    freed: AtomicUsize,
+    /// Buffers returned via `abort` (failed or cancelled reads).
+    aborted: AtomicUsize,
+    /// Standby-lock acquisitions that had to wait (contended).
+    lock_contended: AtomicUsize,
+    /// Cumulative nanoseconds spent waiting on the standby lock. Only
+    /// measured when contention actually occurs (try_lock-first), so the
+    /// uncontended hot path never reads a clock.
+    lock_wait_nanos: std::sync::atomic::AtomicU64,
 }
 
 /// A point-in-time snapshot of a [`PooledSupplier`]'s counters.
+///
+/// All counters are always on: they are relaxed atomics (~1 ns), and lock
+/// timing is measured only when contention actually occurs, so there is no
+/// profiling switch to flip and nothing to pay when idle.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PoolStats {
     /// Chunks currently issued and not yet returned.
@@ -151,6 +167,16 @@ pub struct PoolStats {
     pub reused: usize,
     /// Highest `in_flight` ever observed.
     pub high_watermark: usize,
+    /// Chunks released to the allocator (watermark rejections + `trim`).
+    /// Invariant: `created == in_flight + standby + freed`.
+    pub freed: usize,
+    /// Buffers returned via `abort` — failed or cancelled reads.
+    pub aborted: usize,
+    /// Standby-lock acquisitions that had to wait behind another thread.
+    pub lock_contended: usize,
+    /// Total nanoseconds spent waiting on the standby lock (contended
+    /// acquisitions only — uncontended ones never read a clock).
+    pub lock_wait_nanos: u64,
 }
 
 impl PooledSupplier {
@@ -162,36 +188,63 @@ impl PooledSupplier {
         PooledSupplier {
             inner: Arc::new(PoolInner {
                 chunk_size,
+                contiguous_max: chunk_size,
                 max_standby,
                 standby: Mutex::new(Vec::new()),
                 in_flight: AtomicUsize::new(0),
                 created: AtomicUsize::new(0),
                 reused: AtomicUsize::new(0),
                 high_watermark: AtomicUsize::new(0),
+                freed: AtomicUsize::new(0),
+                aborted: AtomicUsize::new(0),
+                lock_contended: AtomicUsize::new(0),
+                lock_wait_nanos: std::sync::atomic::AtomicU64::new(0),
             }),
         }
+    }
+
+    /// Lower the contiguous threshold below `chunk_size` (frames above it are
+    /// chunked; frames above `chunk_size` always are). Construction-time only,
+    /// before the supplier is cloned/shared.
+    pub fn contiguous_max(mut self, n: usize) -> Self {
+        let inner = Arc::get_mut(&mut self.inner)
+            .expect("contiguous_max must be set before the supplier is cloned");
+        assert!(
+            n <= inner.chunk_size,
+            "contiguous_max cannot exceed chunk_size (one pooled block)"
+        );
+        inner.contiguous_max = n;
+        self
     }
 
     pub fn stats(&self) -> PoolStats {
         PoolStats {
             in_flight: self.inner.in_flight.load(Ordering::Relaxed),
-            standby: self.inner.standby.lock().unwrap().len(),
+            standby: self.inner.standby_lock().len(),
             created: self.inner.created.load(Ordering::Relaxed),
             reused: self.inner.reused.load(Ordering::Relaxed),
             high_watermark: self.inner.high_watermark.load(Ordering::Relaxed),
+            freed: self.inner.freed.load(Ordering::Relaxed),
+            aborted: self.inner.aborted.load(Ordering::Relaxed),
+            lock_contended: self.inner.lock_contended.load(Ordering::Relaxed),
+            lock_wait_nanos: self.inner.lock_wait_nanos.load(Ordering::Relaxed),
         }
     }
 
     /// Free all standby chunks now (e.g. after a burst).
     pub fn trim(&self) {
-        self.inner.standby.lock().unwrap().clear();
+        let mut standby = self.inner.standby_lock();
+        let n = standby.len();
+        standby.clear();
+        drop(standby);
+        self.inner.freed.fetch_add(n, Ordering::Relaxed);
     }
 }
 
 impl BufferSupplier for PooledSupplier {
     fn strategy(&self, frame_len: usize) -> ReadStrategy {
-        if frame_len <= self.inner.chunk_size {
-            // Fits in one pooled block: contiguous fast path, still pooled.
+        if frame_len <= self.inner.contiguous_max {
+            // Fits the contiguous threshold: fast path, still pooled.
             ReadStrategy::Contiguous
         } else {
             ReadStrategy::Chunked {
@@ -205,7 +258,7 @@ impl BufferSupplier for PooledSupplier {
             len <= self.inner.chunk_size,
             "PooledSupplier never asks for more than one chunk"
         );
-        let reused = self.inner.standby.lock().unwrap().pop();
+        let reused = self.inner.standby_lock().pop();
         let buf = match reused {
             Some(b) => {
                 self.inner.reused.fetch_add(1, Ordering::Relaxed);
@@ -232,21 +285,46 @@ impl BufferSupplier for PooledSupplier {
     }
 
     fn abort(&self, buf: BytesMut) {
-        // A failed read: undo the acquire and restock the chunk so flaky
-        // peers cost neither reuse nor counter accuracy.
+        // A failed or cancelled read: undo the acquire and restock the chunk
+        // so flaky peers cost neither reuse nor counter accuracy.
+        self.inner.aborted.fetch_add(1, Ordering::Relaxed);
         self.inner.restock(buf);
     }
 }
 
 impl PoolInner {
+    /// Standby lock with contention accounting: `try_lock` first, so the
+    /// uncontended path costs exactly a `lock()` and never reads a clock;
+    /// only genuine waits are counted and timed.
+    fn standby_lock(&self) -> std::sync::MutexGuard<'_, Vec<BytesMut>> {
+        match self.standby.try_lock() {
+            Ok(g) => g,
+            Err(std::sync::TryLockError::WouldBlock) => {
+                let start = std::time::Instant::now();
+                let g = self.standby.lock().unwrap();
+                self.lock_contended.fetch_add(1, Ordering::Relaxed);
+                self.lock_wait_nanos
+                    .fetch_add(start.elapsed().as_nanos() as u64, Ordering::Relaxed);
+                g
+            }
+            Err(std::sync::TryLockError::Poisoned(p)) => p.into_inner(),
+        }
+    }
+
     fn restock(&self, mut buf: BytesMut) {
         self.in_flight.fetch_sub(1, Ordering::Relaxed);
         buf.clear();
-        let mut standby = self.standby.lock().unwrap();
-        if standby.len() < self.max_standby {
-            standby.push(buf);
-        }
-        // else: drop -> free (watermark trim).
+        let standby_len = {
+            let mut standby = self.standby_lock();
+            if standby.len() < self.max_standby {
+                standby.push(buf);
+                return;
+            }
+            standby.len()
+        };
+        // Watermark reached: the chunk frees at end of scope, OUTSIDE the lock.
+        let _ = standby_len;
+        self.freed.fetch_add(1, Ordering::Relaxed);
     }
 }
 
