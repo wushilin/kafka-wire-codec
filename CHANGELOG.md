@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.2 — 2026-08-16
+
+Bugfix: **async cancellation no longer leaks pool counters or reuse.** An
+async read has three exits, not two: Ok (seal), Err (abort, fixed in 0.6.1),
+and the future being DROPPED at a suspension point (timeout, `select!`, task
+abort) — where neither call site runs, only `Drop` of live locals. Acquired
+buffers are now held in an internal drop guard for their whole
+acquire-to-seal window: success defuses the guard and seals; error returns
+and cancellation both drop it, which runs `abort`. All four read paths
+(sync/async × contiguous/chunked) use the guard; sealed sibling chunks of a
+cancelled chunked read return via their owners' drops as before. The
+`BufferSupplier` pairing contract now explicitly covers cancellation.
+Regression-tested with 100 timeouts cancelling reads mid-body (contiguous
+and chunked): `created` stays 1, `in_flight` returns to 0, reuse intact.
+
+
 ## 0.6.1 — 2026-08-16
 
 Bugfix: **aborted reads no longer leak pool counters or reuse.** `acquire`

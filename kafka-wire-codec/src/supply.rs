@@ -53,9 +53,12 @@ pub trait BufferSupplier: Send + Sync {
     /// the pool's return path: override to attach a drop-time reclaim (see
     /// [`PooledSupplier`]). The default freezes with no reclaim.
     ///
-    /// Pairing contract: the codec calls exactly one of `seal` (read
-    /// succeeded) or [`Self::abort`] (read failed) for every buffer obtained
-    /// from [`Self::acquire`] — stateful suppliers can rely on it.
+    /// Pairing contract: for every buffer obtained from [`Self::acquire`],
+    /// the codec calls exactly one of `seal` (read succeeded) or
+    /// [`Self::abort`] (read failed **or the read future was cancelled** —
+    /// the codec holds acquired buffers in a drop guard, so async
+    /// cancellation at a suspension point still runs `abort`). Stateful
+    /// suppliers can rely on it.
     fn seal(&self, buf: BytesMut) -> Bytes {
         buf.freeze()
     }

@@ -368,6 +368,85 @@ async fn failed_async_reads_do_not_leak() {
     assert!(s.created <= 3, "steady-state flaky reads must reuse chunks");
 }
 
+/// An AsyncRead that yields its data then stalls forever (Pending) — the
+/// canonical cancellation setup: the read future suspends mid-body and gets
+/// DROPPED (by timeout/select/task abort), so neither Ok nor Err paths run.
+struct StallingReader {
+    data: Vec<u8>,
+    pos: usize,
+}
+
+impl tokio::io::AsyncRead for StallingReader {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        if self.pos < self.data.len() {
+            let n = (self.data.len() - self.pos).min(buf.remaining());
+            buf.put_slice(&self.data[self.pos..self.pos + n]);
+            self.pos += n;
+            std::task::Poll::Ready(Ok(()))
+        } else {
+            // Never wakes: the surrounding timeout cancels (drops) the future.
+            std::task::Poll::Pending
+        }
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn cancelled_async_reads_do_not_leak() {
+    use kafka_wire_codec::PooledSupplier;
+    let pool = PooledSupplier::new(64, 8);
+
+    // 100 reads cancelled mid-body: frame declares 32 bytes, stream stalls
+    // after 10, the timeout DROPS the suspended future. Only Drop of live
+    // locals runs — the AcquireGuard's Drop aborts the buffer back to the pool.
+    for _ in 0..100 {
+        let mut data = (32i32).to_be_bytes().to_vec();
+        data.extend_from_slice(&[0x61u8; 10]);
+        let mut reader = StallingReader { data, pos: 0 };
+        let cancelled = tokio::time::timeout(
+            std::time::Duration::from_millis(5),
+            frame::read_frame_supplied_async(&mut reader, &pool),
+        )
+        .await;
+        assert!(cancelled.is_err(), "read must be cancelled, not complete");
+    }
+
+    let s = pool.stats();
+    assert_eq!(s.in_flight, 0, "cancelled reads must not leak in_flight");
+    assert_eq!(s.created, 1, "cancelled chunks must be restocked, not freed");
+    assert_eq!(s.reused, 99);
+    assert_eq!(s.standby, 1);
+    assert_eq!(s.high_watermark, 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn cancelled_chunked_async_reads_do_not_leak() {
+    use kafka_wire_codec::PooledSupplier;
+    let pool = PooledSupplier::new(16, 8);
+
+    // Chunked path: 40-byte body (3 chunks), stream stalls after 20 — chunk 1
+    // seals, chunk 2 is mid-fill when the future is dropped. The sealed chunk
+    // returns via its owner's Drop; the in-fill chunk via the guard's abort.
+    for _ in 0..100 {
+        let mut data = (40i32).to_be_bytes().to_vec();
+        data.extend_from_slice(&[0x61u8; 20]);
+        let mut reader = StallingReader { data, pos: 0 };
+        let cancelled = tokio::time::timeout(
+            std::time::Duration::from_millis(5),
+            frame::read_frame_supplied_async(&mut reader, &pool),
+        )
+        .await;
+        assert!(cancelled.is_err());
+    }
+
+    let s = pool.stats();
+    assert_eq!(s.in_flight, 0, "cancelled chunked reads must not leak");
+    assert!(s.created <= 2, "both chunks must recycle across cancellations");
+}
+
 #[test]
 fn records_chunks_equality_ignores_boundaries() {
     let mut a = RecordsChunks::new();

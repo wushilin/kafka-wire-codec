@@ -232,6 +232,42 @@ fn take_frame(buf: &mut BytesMut, start: usize, len: usize) -> Bytes {
     }
 }
 
+/// Holds a buffer between `acquire` and `seal`, guaranteeing `abort` runs on
+/// EVERY non-seal exit — including async cancellation, where the future is
+/// dropped at a suspension point and only `Drop` of live locals executes.
+/// Success calls [`AcquireGuard::seal`], which defuses the guard.
+struct AcquireGuard<'a, S: BufferSupplier + ?Sized> {
+    supplier: &'a S,
+    buf: Option<BytesMut>,
+}
+
+impl<'a, S: BufferSupplier + ?Sized> AcquireGuard<'a, S> {
+    fn acquire(supplier: &'a S, len: usize) -> Self {
+        AcquireGuard {
+            buf: Some(supplier.acquire(len)),
+            supplier,
+        }
+    }
+
+    fn buf_mut(&mut self) -> &mut BytesMut {
+        self.buf.as_mut().expect("buffer present until sealed")
+    }
+
+    /// Success path: defuse the guard and seal the filled buffer.
+    fn seal(mut self) -> Bytes {
+        let buf = self.buf.take().expect("buffer present until sealed");
+        self.supplier.seal(buf)
+    }
+}
+
+impl<S: BufferSupplier + ?Sized> Drop for AcquireGuard<'_, S> {
+    fn drop(&mut self) {
+        if let Some(buf) = self.buf.take() {
+            self.supplier.abort(buf);
+        }
+    }
+}
+
 /// A frame body read under a [`BufferSupplier`]'s strategy: either one
 /// contiguous buffer (decode with `Message::decode`) or a chain of chunks
 /// (decode with the message's `*Shell::decode_chained`).
@@ -275,12 +311,9 @@ pub fn read_frame_supplied_with_limit<R: Read, S: BufferSupplier + ?Sized>(
     let len = checked_len(i32::from_be_bytes(len_buf), max)?;
     match supplier.strategy(len) {
         ReadStrategy::Contiguous => {
-            let mut buf = supplier.acquire(len);
-            if let Err(e) = read_exact_into(reader, &mut buf, len) {
-                supplier.abort(buf);
-                return Err(e);
-            }
-            Ok(SuppliedFrame::Contiguous(supplier.seal(buf)))
+            let mut guard = AcquireGuard::acquire(supplier, len);
+            read_exact_into(reader, guard.buf_mut(), len)?;
+            Ok(SuppliedFrame::Contiguous(guard.seal()))
         }
         ReadStrategy::Chunked { chunk_size } => {
             let chunk_size = chunk_size.max(1);
@@ -288,12 +321,9 @@ pub fn read_frame_supplied_with_limit<R: Read, S: BufferSupplier + ?Sized>(
             let mut left = len;
             while left > 0 {
                 let want = left.min(chunk_size);
-                let mut buf = supplier.acquire(want);
-                if let Err(e) = read_exact_into(reader, &mut buf, want) {
-                    supplier.abort(buf);
-                    return Err(e);
-                }
-                chunks.push(supplier.seal(buf));
+                let mut guard = AcquireGuard::acquire(supplier, want);
+                read_exact_into(reader, guard.buf_mut(), want)?;
+                chunks.push(guard.seal());
                 left -= want;
             }
             Ok(SuppliedFrame::Chunked(ChunkChain::new(chunks)))
@@ -360,12 +390,9 @@ where
     let len = checked_len(reader.read_i32().await?, max)?;
     match supplier.strategy(len) {
         ReadStrategy::Contiguous => {
-            let mut buf = supplier.acquire(len);
-            if let Err(e) = fill_async(reader, &mut buf, len).await {
-                supplier.abort(buf);
-                return Err(e);
-            }
-            Ok(SuppliedFrame::Contiguous(supplier.seal(buf)))
+            let mut guard = AcquireGuard::acquire(supplier, len);
+            fill_async(reader, guard.buf_mut(), len).await?;
+            Ok(SuppliedFrame::Contiguous(guard.seal()))
         }
         ReadStrategy::Chunked { chunk_size } => {
             let chunk_size = chunk_size.max(1);
@@ -373,12 +400,9 @@ where
             let mut left = len;
             while left > 0 {
                 let want = left.min(chunk_size);
-                let mut buf = supplier.acquire(want);
-                if let Err(e) = fill_async(reader, &mut buf, want).await {
-                    supplier.abort(buf);
-                    return Err(e);
-                }
-                chunks.push(supplier.seal(buf));
+                let mut guard = AcquireGuard::acquire(supplier, want);
+                fill_async(reader, guard.buf_mut(), want).await?;
+                chunks.push(guard.seal());
                 left -= want;
             }
             Ok(SuppliedFrame::Chunked(ChunkChain::new(chunks)))

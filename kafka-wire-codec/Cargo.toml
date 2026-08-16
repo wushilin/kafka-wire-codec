@@ -1,6 +1,6 @@
 [package]
 name = "kafka-wire-codec"
-version = "0.6.1"
+version = "0.6.2"
 edition = "2021"
 description = "Zero-copy Apache Kafka wire protocol codec: every RPC and version generated from the official schemas, byte-for-byte cross-checked against the Java client"
 license = "MIT OR Apache-2.0"
@@ -24,4 +24,4 @@ tokio = { version = "1", features = ["io-util"], optional = true }
 thiserror = "2"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["full", "test-util"] }
