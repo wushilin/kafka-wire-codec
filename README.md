@@ -35,6 +35,49 @@ Generated from Kafka **4.3.1**.
    unknown tags are preserved raw, interleaved in ascending tag order for
    byte-exact round-trips.
 
+7. **Payload-heavy frames without huge buffers.** The records-bearing messages
+   (`ProduceRequest`, `FetchResponse`, `ShareFetchResponse`,
+   `FetchSnapshotResponse`) additionally generate **Shell** variants
+   (`FetchResponseShell`, …): identical typed fields, except records payloads
+   are `RecordsChunks` — zero-copy chains of pool-sized chunks. A pluggable
+   `BufferSupplier` picks the read path per frame from the exact length prefix.
+
+## Payload-heavy frames: the shell path
+
+A 55 MiB fetch response normally forces a 55 MiB contiguous buffer. The shell
+path reads it as pool-sized chunks instead, decodes everything *except* the
+record batches (which stay as zero-copy chunk slices), and re-encodes by
+splicing the chunks back out as shared frame segments — the payload is never
+contiguous and never copied:
+
+```rust
+use kafka_wire_codec::generated::fetch_response::FetchResponseShell;
+use kafka_wire_codec::{frame, DefaultSupplier, SuppliedFrame};
+
+let supplier = DefaultSupplier::default();   // contiguous ≤ 1 MiB, chunked above
+match frame::read_frame_supplied(&mut stream, &supplier)? {
+    // Small frame: today's fast path, decode as usual.
+    SuppliedFrame::Contiguous(mut body) => { /* Message::decode(...) */ }
+    // Large frame: shell decode — all metadata fields (including per-partition
+    // and trailing tagged fields) fully typed; records stay chunked.
+    SuppliedFrame::Chunked(mut chain) => {
+        let mut shell = FetchResponseShell::decode_chained(version, &mut chain)?;
+        shell.node_endpoints[0].host = "proxy.example.com".into();   // rewrite
+        let mut seg = kafka_wire_codec::SegmentedBuf::new();
+        shell.encode(version, &mut seg)?;                            // zero-copy splice
+        let frame = kafka_wire_codec::frame::EncodedFrame::from_segments(seg);
+        // frame.write_to[_async](...) — vectored, chunks pass by refcount
+    }
+}
+```
+
+Implement `BufferSupplier` yourself to route chunk allocation through your own
+pool or spool: `strategy(frame_len)` sees the exact frame length before any
+body byte is read (threshold, admission control), and `acquire(len)` provides
+the buffers (malloc, borrow, pin — the codec never knows). The shell path is
+verified by the compat suite: every records-bearing Java fixture is chunk-split
+(down to 7-byte chunks), shell-decoded, re-encoded, and byte-compared.
+
 ## Workspace layout
 
 ```
@@ -44,7 +87,8 @@ kafka-wire-codec/   Runtime crate (published to crates.io as `kafka-wire-codec`)
   src/frame/        Length-prefix framing (sync + async) + EncodedFrame
   src/header.rs     RequestHeader / ResponseHeader
   src/message.rs    Encodable trait (generic, size-first encoding)
-  src/types.rs      StrBytes + entity newtypes (TopicName, GroupId, BrokerId, …)
+  src/types.rs      StrBytes + entity newtypes + RecordsChunks (chunked payloads)
+  src/supply.rs     BufferSupplier / ReadStrategy (pluggable buffer policy)
   src/generated/    GENERATED — one module per message + dispatch.rs + kinds.rs + KAFKA_VERSION
 compat-tests/       Java fixture generator (kafka-clients) for the compat test
 scripts/regen.sh    Clean → fetch schemas → regenerate → retest

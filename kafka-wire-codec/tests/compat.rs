@@ -164,6 +164,8 @@ fn compat_roundtrip_all() {
     let mut fetch_node_endpoints_seen = false;
     let mut produce_node_endpoints_seen = false;
     let mut fetch_diverging_epoch_seen = false;
+    // Records exercised through the shell (chunked-payload) path.
+    let mut shell_passed = 0u32;
 
     for _ in 0..count {
         let api_key = r.get_i16();
@@ -230,6 +232,20 @@ fn compat_roundtrip_all() {
             }
         }
 
+        // Shell (chunked) path: must reproduce the Java bytes exactly too.
+        match shell_check(&rec) {
+            Some(Ok(())) => shell_passed += 1,
+            Some(Err(msg)) => failures.push(format!(
+                "apikey={} {} v{} [{}]: {}",
+                rec.api_key,
+                if rec.is_request { "req" } else { "resp" },
+                rec.version,
+                rec.label,
+                msg
+            )),
+            None => {}
+        }
+
         match check(&rec) {
             CheckResult::Ok => {
                 passed += 1;
@@ -267,9 +283,10 @@ fn compat_roundtrip_all() {
     }
 
     eprintln!(
-        "Compat results: {} passed ({} default-populated), {} skipped, {} failed, {} matrix cells missing",
+        "Compat results: {} passed ({} default-populated, {} shell-verified), {} skipped, {} failed, {} matrix cells missing",
         passed,
         defaults,
+        shell_passed,
         skipped.len(),
         failures.len(),
         missing.len()
@@ -316,12 +333,93 @@ fn compat_roundtrip_all() {
         fetch_diverging_epoch_seen,
         "no fixture populated FetchResponse partition diverging_epoch (tag 0) — tagged-field coverage is vacuous"
     );
+    assert!(
+        shell_passed > 0,
+        "no records-bearing fixtures went through the shell (chunked) path"
+    );
 }
 
 enum CheckResult {
     Ok,
     Unsupported,
     Fail(String),
+}
+
+/// Shell (chunked-payload) round-trip for the records-bearing messages: split
+/// the Java bytes into chunks (7-byte chunks for small bodies to torture every
+/// boundary; 64 KiB for the multi-MiB ones), decode via `decode_chained`,
+/// re-encode, and require byte-for-byte equality with the fixture.
+/// Returns None for messages without a shell.
+fn shell_check(rec: &Record) -> Option<Result<(), String>> {
+    use kafka_wire_codec::generated::fetch_response::{FetchResponse, FetchResponseShell};
+    use kafka_wire_codec::generated::fetch_snapshot_response::{
+        FetchSnapshotResponse, FetchSnapshotResponseShell,
+    };
+    use kafka_wire_codec::generated::produce_request::{ProduceRequest, ProduceRequestShell};
+    use kafka_wire_codec::generated::share_fetch_response::{
+        ShareFetchResponse, ShareFetchResponseShell,
+    };
+    use kafka_wire_codec::ChunkChain;
+
+    let chunk = if rec.body.len() > (1 << 20) {
+        64 * 1024
+    } else {
+        7
+    };
+    let mut chunks = Vec::new();
+    let mut off = 0;
+    while off < rec.body.len() {
+        let end = (off + chunk).min(rec.body.len());
+        chunks.push(rec.body.slice(off..end));
+        off = end;
+    }
+    let mut ch = ChunkChain::new(chunks);
+
+    macro_rules! go {
+        ($shell:ty) => {{
+            let m = match <$shell>::decode_chained(rec.version, &mut ch) {
+                Ok(m) => m,
+                Err(e) => return Some(Err(format!("shell decode: {}", e))),
+            };
+            if !ch.is_empty() {
+                return Some(Err(format!(
+                    "shell decode left {} trailing bytes",
+                    ch.remaining()
+                )));
+            }
+            let size = match m.encoded_size(rec.version) {
+                Ok(s) => s,
+                Err(e) => return Some(Err(format!("shell encoded_size: {}", e))),
+            };
+            let mut buf = bytes::BytesMut::with_capacity(size);
+            if let Err(e) = m.encode(rec.version, &mut buf) {
+                return Some(Err(format!("shell encode: {}", e)));
+            }
+            if buf.len() != size {
+                return Some(Err(format!(
+                    "shell size-first mismatch: sized {} wrote {}",
+                    size,
+                    buf.len()
+                )));
+            }
+            if buf[..] != rec.body[..] {
+                return Some(Err(format!(
+                    "shell byte mismatch (java={} shell={} bytes)",
+                    rec.body.len(),
+                    buf.len()
+                )));
+            }
+            Some(Ok(()))
+        }};
+    }
+
+    match (rec.api_key, rec.is_request) {
+        (k, true) if k == ProduceRequest::API_KEY => go!(ProduceRequestShell),
+        (k, false) if k == FetchResponse::API_KEY => go!(FetchResponseShell),
+        (k, false) if k == ShareFetchResponse::API_KEY => go!(ShareFetchResponseShell),
+        (k, false) if k == FetchSnapshotResponse::API_KEY => go!(FetchSnapshotResponseShell),
+        _ => None,
+    }
 }
 
 fn check(rec: &Record) -> CheckResult {

@@ -2,6 +2,7 @@
 
 use bytes::Bytes;
 use uuid::Uuid;
+use crate::codec::chain::*;
 use crate::codec::*;
 use crate::error::{DecodeError, EncodeError};
 use crate::types::*;
@@ -531,3 +532,397 @@ impl crate::Encodable for ShareFetchResponse {
 impl crate::EncodableZeroCopy for ShareFetchResponse {
     fn write_segmented(&self, version: i16, buf: &mut SegmentedBuf) -> Result<(), EncodeError> { self.encode(version, buf) }
 }
+
+// ── Shell (chunked-payload) variants ─────────────────────────────────────────
+// Records payloads decode as zero-copy chunk chains (`RecordsChunks`) from a
+// `ChunkChain`, so payload-heavy frames never need one contiguous buffer.
+
+/// Shell (chunked-payload) variant of [`ShareFetchableTopicResponse`]: identical except records
+/// payloads are `RecordsChunks` chunk chains instead of contiguous `Bytes`.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ShareFetchableTopicResponseShell {
+    /// The unique topic ID.
+    pub topic_id: Uuid,
+    /// The topic partitions.
+    pub partitions: Vec<PartitionDataShell>,
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    pub tagged_fields: Vec<(u32, Bytes)>,
+}
+
+impl ShareFetchableTopicResponseShell {
+    /// Decode from a chunk chain; records payloads come out as zero-copy
+    /// chunk slices (see `frame::read_frame_supplied`).
+    pub fn decode_chained(version: i16, ch: &mut ChunkChain) -> Result<Self, DecodeError> {
+        let mut msg = ShareFetchableTopicResponseShell::default();
+        {
+            msg.topic_id = ch_get_uuid(ch)?;
+        }
+        {
+            let len_opt = { let n = ch_get_uvarint32(ch)?; if n == 0 { None } else { Some((n - 1) as usize) } };
+            let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
+            { let mut items = Vec::with_capacity(count.min(ch.remaining()));
+                for _ in 0..count { items.push(PartitionDataShell::decode_chained(version, ch)?); }
+            msg.partitions = items; }
+        }
+        msg.tagged_fields = ch_get_tagged_fields(ch)?;
+        Ok(msg)
+    }
+
+    pub fn encoded_size(&self, version: i16) -> usize {
+        let mut size = 0usize;
+        {
+            size += 16;
+        }
+        {
+            { let arr = &self.partitions;
+                size += uvarint_size(arr.len() as u64 + 1);
+                for item in arr {
+                    size += item.encoded_size(version);
+                }
+            }
+        }
+        size += tagged_fields_size(&self.tagged_fields);
+        size
+    }
+
+    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
+        {
+            put_uuid(buf, &self.topic_id);
+        }
+        {
+            { let arr = &self.partitions;
+                put_uvarint(buf, arr.len() as u64 + 1);
+                for item in arr { item.encode(version, buf); }
+            }
+        }
+        put_tagged_fields(buf, &self.tagged_fields);
+    }
+}
+
+/// Shell (chunked-payload) variant of [`PartitionData`]: identical except records
+/// payloads are `RecordsChunks` chunk chains instead of contiguous `Bytes`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PartitionDataShell {
+    /// The partition index.
+    pub partition_index: i32,
+    /// The fetch error code, or 0 if there was no fetch error.
+    pub error_code: i16,
+    /// The fetch error message, or null if there was no fetch error.
+    pub error_message: Option<StrBytes>,
+    /// The acknowledge error code, or 0 if there was no acknowledge error.
+    pub acknowledge_error_code: i16,
+    /// The acknowledge error message, or null if there was no acknowledge error.
+    pub acknowledge_error_message: Option<StrBytes>,
+    /// The current leader of the partition.
+    pub current_leader: LeaderIdAndEpoch,
+    /// The record data.
+    pub records: Option<RecordsChunks>,
+    /// The acquired records.
+    pub acquired_records: Vec<AcquiredRecords>,
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    pub tagged_fields: Vec<(u32, Bytes)>,
+}
+
+impl Default for PartitionDataShell {
+    fn default() -> Self {
+        Self {
+            partition_index: 0,
+            error_code: 0,
+            error_message: None,
+            acknowledge_error_code: 0,
+            acknowledge_error_message: None,
+            current_leader: LeaderIdAndEpoch::default(),
+            records: Some(RecordsChunks::new()),
+            acquired_records: Vec::new(),
+            tagged_fields: Vec::new(),
+        }
+    }
+}
+
+impl PartitionDataShell {
+    /// Decode from a chunk chain; records payloads come out as zero-copy
+    /// chunk slices (see `frame::read_frame_supplied`).
+    pub fn decode_chained(version: i16, ch: &mut ChunkChain) -> Result<Self, DecodeError> {
+        let mut msg = PartitionDataShell::default();
+        {
+            msg.partition_index = ch_get_i32(ch)?;
+        }
+        {
+            msg.error_code = ch_get_i16(ch)?;
+        }
+        {
+            msg.error_message = ch_get_compact_string(ch)?;
+        }
+        {
+            msg.acknowledge_error_code = ch_get_i16(ch)?;
+        }
+        {
+            msg.acknowledge_error_message = ch_get_compact_string(ch)?;
+        }
+        {
+            msg.current_leader = LeaderIdAndEpoch::decode_chained(version, ch)?;
+        }
+        {
+            msg.records = { let v = ch_get_compact_records(ch)?; if version <= 0 { v } else { Some(v.ok_or(DecodeError::NullForNonNullable)?) } };
+        }
+        {
+            let len_opt = { let n = ch_get_uvarint32(ch)?; if n == 0 { None } else { Some((n - 1) as usize) } };
+            let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
+            { let mut items = Vec::with_capacity(count.min(ch.remaining()));
+                for _ in 0..count { items.push(AcquiredRecords::decode_chained(version, ch)?); }
+            msg.acquired_records = items; }
+        }
+        msg.tagged_fields = ch_get_tagged_fields(ch)?;
+        Ok(msg)
+    }
+
+    pub fn encoded_size(&self, version: i16) -> usize {
+        let mut size = 0usize;
+        {
+            size += 4;
+        }
+        {
+            size += 2;
+        }
+        {
+            size += compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str()));
+        }
+        {
+            size += 2;
+        }
+        {
+            size += compact_nullable_string_size(self.acknowledge_error_message.as_ref().map(|v| v.as_str()));
+        }
+        {
+            size += self.current_leader.encoded_size(version);
+        }
+        {
+            size += if version <= 0 { compact_nullable_records_chunks_size(self.records.as_ref()) } else { let v = self.records.as_ref().expect("field records is None but not nullable at this version"); compact_records_chunks_size(v) };
+        }
+        {
+            { let arr = &self.acquired_records;
+                size += uvarint_size(arr.len() as u64 + 1);
+                for item in arr {
+                    size += item.encoded_size(version);
+                }
+            }
+        }
+        size += tagged_fields_size(&self.tagged_fields);
+        size
+    }
+
+    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {
+        {
+            put_i32(buf, self.partition_index);
+        }
+        {
+            put_i16(buf, self.error_code);
+        }
+        {
+            put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str()));
+        }
+        {
+            put_i16(buf, self.acknowledge_error_code);
+        }
+        {
+            put_compact_nullable_string(buf, self.acknowledge_error_message.as_ref().map(|v| v.as_str()));
+        }
+        {
+            self.current_leader.encode(version, buf);
+        }
+        {
+            if version <= 0 { put_compact_nullable_records_chunks_zc(buf, self.records.as_ref()) } else { let v = self.records.as_ref().expect("field records is None but not nullable at this version"); put_compact_records_chunks_zc(buf, v) };
+        }
+        {
+            { let arr = &self.acquired_records;
+                put_uvarint(buf, arr.len() as u64 + 1);
+                for item in arr { item.encode(version, buf); }
+            }
+        }
+        put_tagged_fields(buf, &self.tagged_fields);
+    }
+}
+
+impl LeaderIdAndEpoch {
+    /// Decode from a chunk chain (shell path); identical result to `decode`.
+    pub fn decode_chained(version: i16, ch: &mut ChunkChain) -> Result<Self, DecodeError> {
+        let mut msg = LeaderIdAndEpoch::default();
+        {
+            msg.leader_id = ch_get_i32(ch)?;
+        }
+        {
+            msg.leader_epoch = ch_get_i32(ch)?;
+        }
+        msg.tagged_fields = ch_get_tagged_fields(ch)?;
+        Ok(msg)
+    }
+}
+
+impl AcquiredRecords {
+    /// Decode from a chunk chain (shell path); identical result to `decode`.
+    pub fn decode_chained(version: i16, ch: &mut ChunkChain) -> Result<Self, DecodeError> {
+        let mut msg = AcquiredRecords::default();
+        {
+            msg.first_offset = ch_get_i64(ch)?;
+        }
+        {
+            msg.last_offset = ch_get_i64(ch)?;
+        }
+        {
+            msg.delivery_count = ch_get_i16(ch)?;
+        }
+        msg.tagged_fields = ch_get_tagged_fields(ch)?;
+        Ok(msg)
+    }
+}
+
+impl NodeEndpoint {
+    /// Decode from a chunk chain (shell path); identical result to `decode`.
+    pub fn decode_chained(version: i16, ch: &mut ChunkChain) -> Result<Self, DecodeError> {
+        let mut msg = NodeEndpoint::default();
+        {
+            msg.node_id = BrokerId(ch_get_i32(ch)?);
+        }
+        {
+            msg.host = (ch_get_compact_string(ch)?).ok_or(DecodeError::NullForNonNullable)?;
+        }
+        {
+            msg.port = ch_get_i32(ch)?;
+        }
+        {
+            msg.rack = ch_get_compact_string(ch)?;
+        }
+        msg.tagged_fields = ch_get_tagged_fields(ch)?;
+        Ok(msg)
+    }
+}
+
+/// Shell (chunked-payload) variant of [`ShareFetchResponse`]: identical except records
+/// payloads are `RecordsChunks` chunk chains instead of contiguous `Bytes`.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ShareFetchResponseShell {
+    /// The duration in milliseconds for which the request was throttled due to a quota violation, or zero if the request did not violate any quota.
+    pub throttle_time_ms: i32,
+    /// The top-level response error code.
+    pub error_code: i16,
+    /// The top-level error message, or null if there was no error.
+    pub error_message: Option<StrBytes>,
+    /// The time in milliseconds for which the acquired records are locked.
+    pub acquisition_lock_timeout_ms: i32,
+    /// The response topics.
+    pub responses: Vec<ShareFetchableTopicResponseShell>,
+    /// Endpoints for all current leaders enumerated in PartitionData with error NOT_LEADER_OR_FOLLOWER.
+    pub node_endpoints: Vec<NodeEndpoint>,
+    /// Unknown/raw tagged fields (flexible versions), ascending tag order.
+    pub tagged_fields: Vec<(u32, Bytes)>,
+}
+
+impl ShareFetchResponseShell {
+    /// Decode from a chunk chain; records payloads come out as zero-copy
+    /// chunk slices (see `frame::read_frame_supplied`).
+    pub fn decode_chained(version: i16, ch: &mut ChunkChain) -> Result<Self, DecodeError> {
+        if !(ShareFetchResponse::VALID_MIN_VERSION..=ShareFetchResponse::VALID_MAX_VERSION).contains(&version) {
+            return Err(DecodeError::UnsupportedVersion { api_key: ShareFetchResponse::API_KEY, version });
+        }
+        let mut msg = ShareFetchResponseShell::default();
+        {
+            msg.throttle_time_ms = ch_get_i32(ch)?;
+        }
+        {
+            msg.error_code = ch_get_i16(ch)?;
+        }
+        {
+            msg.error_message = ch_get_compact_string(ch)?;
+        }
+        if version >= 1 {
+            msg.acquisition_lock_timeout_ms = ch_get_i32(ch)?;
+        }
+        {
+            let len_opt = { let n = ch_get_uvarint32(ch)?; if n == 0 { None } else { Some((n - 1) as usize) } };
+            let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
+            { let mut items = Vec::with_capacity(count.min(ch.remaining()));
+                for _ in 0..count { items.push(ShareFetchableTopicResponseShell::decode_chained(version, ch)?); }
+            msg.responses = items; }
+        }
+        {
+            let len_opt = { let n = ch_get_uvarint32(ch)?; if n == 0 { None } else { Some((n - 1) as usize) } };
+            let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;
+            { let mut items = Vec::with_capacity(count.min(ch.remaining()));
+                for _ in 0..count { items.push(NodeEndpoint::decode_chained(version, ch)?); }
+            msg.node_endpoints = items; }
+        }
+        msg.tagged_fields = ch_get_tagged_fields(ch)?;
+        Ok(msg)
+    }
+
+    pub fn encoded_size(&self, version: i16) -> Result<usize, EncodeError> {
+        if !(ShareFetchResponse::VALID_MIN_VERSION..=ShareFetchResponse::VALID_MAX_VERSION).contains(&version) {
+            return Err(EncodeError::UnsupportedVersion { api_key: ShareFetchResponse::API_KEY, version });
+        }
+        let mut size = 0usize;
+        {
+            size += 4;
+        }
+        {
+            size += 2;
+        }
+        {
+            size += compact_nullable_string_size(self.error_message.as_ref().map(|v| v.as_str()));
+        }
+        if version >= 1 {
+            size += 4;
+        }
+        {
+            { let arr = &self.responses;
+                size += uvarint_size(arr.len() as u64 + 1);
+                for item in arr {
+                    size += item.encoded_size(version);
+                }
+            }
+        }
+        {
+            { let arr = &self.node_endpoints;
+                size += uvarint_size(arr.len() as u64 + 1);
+                for item in arr {
+                    size += item.encoded_size(version);
+                }
+            }
+        }
+        size += tagged_fields_size(&self.tagged_fields);
+        Ok(size)
+    }
+
+    /// Encode; each records chunk becomes a shared segment on a zero-copy sink.
+    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) -> Result<(), EncodeError> {
+        if !(ShareFetchResponse::VALID_MIN_VERSION..=ShareFetchResponse::VALID_MAX_VERSION).contains(&version) {
+            return Err(EncodeError::UnsupportedVersion { api_key: ShareFetchResponse::API_KEY, version });
+        }
+        {
+            put_i32(buf, self.throttle_time_ms);
+        }
+        {
+            put_i16(buf, self.error_code);
+        }
+        {
+            put_compact_nullable_string(buf, self.error_message.as_ref().map(|v| v.as_str()));
+        }
+        if version >= 1 {
+            put_i32(buf, self.acquisition_lock_timeout_ms);
+        }
+        {
+            { let arr = &self.responses;
+                put_uvarint(buf, arr.len() as u64 + 1);
+                for item in arr { item.encode(version, buf); }
+            }
+        }
+        {
+            { let arr = &self.node_endpoints;
+                put_uvarint(buf, arr.len() as u64 + 1);
+                for item in arr { item.encode(version, buf); }
+            }
+        }
+        put_tagged_fields(buf, &self.tagged_fields);
+        Ok(())
+    }
+}
+

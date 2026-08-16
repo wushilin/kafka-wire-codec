@@ -2,6 +2,7 @@
 
 use bytes::Bytes;
 use uuid::Uuid;
+use crate::codec::chain::*;
 use crate::codec::*;
 use crate::error::{DecodeError, EncodeError};
 use crate::types::*;

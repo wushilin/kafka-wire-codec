@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.5.0 — 2026-08-16
+
+Kafka schema tag: **4.3.1** (unchanged). Compat: 1002/1002 records
+byte-for-byte, including 68 shell-path verifications.
+
+New — the shell (chunked-payload) path:
+
+- Generated `*Shell` variants for the records-bearing messages
+  (`ProduceRequestShell`, `FetchResponseShell`, `ShareFetchResponseShell`,
+  `FetchSnapshotResponseShell` + nested): identical typed fields, but records
+  payloads are `RecordsChunks` — zero-copy chains of `Bytes` chunks. Payload-
+  heavy frames never need one contiguous buffer.
+- `Shell::decode_chained(version, &mut ChunkChain)` decodes everything except
+  the record batches (per-partition and trailing tagged fields included);
+  batches come out as zero-copy slices of the read chunks. `Shell::encode`
+  splices the chunks back out as shared segments (`SegmentedBuf` /
+  `EncodedFrame` vectored writes) — never contiguous, never copied.
+- `BufferSupplier` trait + `ReadStrategy`: per-frame buffer policy decided
+  from the exact length prefix before any body byte is read. `strategy()` is
+  the threshold/admission point; `acquire()` the provider (pool, malloc,
+  spool — invisible to the codec). `DefaultSupplier` (1 MiB threshold and
+  chunks) works with zero configuration.
+- `frame::read_frame_supplied[_async][_with_limit]` → `SuppliedFrame::
+  {Contiguous, Chunked}`.
+- The compat suite chunk-splits every records-bearing Java fixture (7-byte
+  chunks for small bodies to torture boundaries, 64 KiB for multi-MiB ones),
+  shell-decodes, re-encodes, and requires byte-for-byte equality.
+
 ## 0.4.0 — 2026-08-15
 
 Kafka schema tag: **4.3.1** (unchanged). Compat: 1002/1002 records

@@ -78,6 +78,7 @@ pub fn generate_message(spec: &MessageSpec) -> String {
     out.push_str("#![allow(unused_variables, unused_imports, clippy::manual_range_contains, clippy::unnecessary_unwrap)]\n\n");
     out.push_str("use bytes::Bytes;\n");
     out.push_str("use uuid::Uuid;\n");
+    out.push_str("use crate::codec::chain::*;\n");
     out.push_str("use crate::codec::*;\n");
     out.push_str("use crate::error::{DecodeError, EncodeError};\n");
     out.push_str("use crate::types::*;\n\n");
@@ -276,36 +277,10 @@ fn emit_struct(
     out.push_str(version_check_size_encode);
     out.push_str("        let mut size = 0usize;\n");
     for field in fields {
-        out.push_str(&generate_field_size(field, flex_min));
+        out.push_str(&generate_field_size(field, flex_min, false));
     }
     if flex_min != i16::MAX {
-        if tagged.is_empty() {
-            out.push_str(&format!(
-                "        {}\n",
-                flex_stmt(flex_min, "size += tagged_fields_size(&self.tagged_fields);")
-            ));
-        } else {
-            let mut blk = String::new();
-            blk.push_str("{\n");
-            blk.push_str("            let mut num_tagged = self.tagged_fields.len();\n");
-            blk.push_str("            let mut known_tagged_size = 0usize;\n");
-            for f in &tagged {
-                blk.push_str(&format!("            if {} {{\n", tagged_write_cond(f)));
-                blk.push_str("                num_tagged += 1;\n");
-                blk.push_str(&format!(
-                    "                let data_len = {{ let mut size = 0usize;\n{}                size }};\n",
-                    field_size_body(f, flex_min)
-                ));
-                blk.push_str(&format!(
-                    "                known_tagged_size += uvarint_size({}u64) + uvarint_size(data_len as u64) + data_len;\n",
-                    tag_number(f)
-                ));
-                blk.push_str("            }\n");
-            }
-            blk.push_str("            size += uvarint_size(num_tagged as u64) + known_tagged_size + raw_tagged_fields_size(&self.tagged_fields);\n");
-            blk.push_str("        }");
-            out.push_str(&format!("        {}\n", flex_stmt(flex_min, &blk)));
-        }
+        out.push_str(&tagged_size_stmt(&tagged, flex_min));
     }
     if top.is_some() {
         out.push_str("        Ok(size)\n");
@@ -325,69 +300,117 @@ fn emit_struct(
     }
     out.push_str(version_check_size_encode);
     for field in fields {
-        out.push_str(&generate_field_encode(field, flex_min));
+        out.push_str(&generate_field_encode(field, flex_min, false));
     }
     if flex_min != i16::MAX {
-        if tagged.is_empty() {
-            out.push_str(&format!(
-                "        {}\n",
-                flex_stmt(flex_min, "put_tagged_fields(buf, &self.tagged_fields);")
-            ));
-        } else {
-            // Known (typed) tags and unknown raw tags are merged in ascending
-            // tag order — the order Kafka readers require.
-            let mut blk = String::new();
-            blk.push_str("{\n");
-            blk.push_str("            let mut num_tagged = self.tagged_fields.len();\n");
-            for f in &tagged {
-                blk.push_str(&format!(
-                    "            if {} {{ num_tagged += 1; }}\n",
-                    tagged_write_cond(f)
-                ));
-            }
-            blk.push_str("            put_uvarint(buf, num_tagged as u64);\n");
-            // A raw tag can only precede a known tag N > 0; when every known
-            // tag is 0, raw tags always trail and no merge cursor is needed.
-            let needs_merge = tagged.iter().any(|f| tag_number(f) > 0);
-            if needs_merge {
-                blk.push_str("            let mut raw_it = self.tagged_fields.iter().peekable();\n");
-            }
-            for f in &tagged {
-                let tag = tag_number(f);
-                blk.push_str(&format!("            if {} {{\n", tagged_write_cond(f)));
-                if tag > 0 {
-                    blk.push_str(&format!(
-                        "                while let Some((t, d)) = raw_it.peek() {{ if *t < {} {{ put_raw_tagged_field(buf, *t, d); raw_it.next(); }} else {{ break; }} }}\n",
-                        tag
-                    ));
-                }
-                blk.push_str(&format!("                put_uvarint(buf, {}u64);\n", tag));
-                blk.push_str(&format!(
-                    "                let data_len = {{ let mut size = 0usize;\n{}                size }};\n",
-                    field_size_body(f, flex_min)
-                ));
-                blk.push_str("                put_uvarint(buf, data_len as u64);\n");
-                blk.push_str(&field_encode_body(f, flex_min));
-                blk.push_str("            }\n");
-            }
-            if needs_merge {
-                blk.push_str(
-                    "            for (t, d) in raw_it { put_raw_tagged_field(buf, *t, d); }\n",
-                );
-            } else {
-                blk.push_str(
-                    "            for (t, d) in &self.tagged_fields { put_raw_tagged_field(buf, *t, d); }\n",
-                );
-            }
-            blk.push_str("        }");
-            out.push_str(&format!("        {}\n", flex_stmt(flex_min, &blk)));
-        }
+        out.push_str(&tagged_encode_stmt(&tagged, flex_min));
     }
     if top.is_some() {
         out.push_str("        Ok(())\n");
     }
     out.push_str("    }\n\n");
+    emit_struct_decode_and_close(&mut out, name, fields, flex_min, top, &tagged);
+    out
+}
 
+/// The tagged-fields sizing statement (count + known typed tags + raw tags),
+/// shared between the normal structs and the shell twins (tagged fields never
+/// contain records, so both use the plain field bodies).
+fn tagged_size_stmt(tagged: &[&FieldSpec], flex_min: i16) -> String {
+    if tagged.is_empty() {
+        return format!(
+            "        {}\n",
+            flex_stmt(flex_min, "size += tagged_fields_size(&self.tagged_fields);")
+        );
+    }
+    let mut blk = String::new();
+    blk.push_str("{\n");
+    blk.push_str("            let mut num_tagged = self.tagged_fields.len();\n");
+    blk.push_str("            let mut known_tagged_size = 0usize;\n");
+    for f in tagged {
+        blk.push_str(&format!("            if {} {{\n", tagged_write_cond(f)));
+        blk.push_str("                num_tagged += 1;\n");
+        blk.push_str(&format!(
+            "                let data_len = {{ let mut size = 0usize;\n{}                size }};\n",
+            field_size_body(f, flex_min, false)
+        ));
+        blk.push_str(&format!(
+            "                known_tagged_size += uvarint_size({}u64) + uvarint_size(data_len as u64) + data_len;\n",
+            tag_number(f)
+        ));
+        blk.push_str("            }\n");
+    }
+    blk.push_str("            size += uvarint_size(num_tagged as u64) + known_tagged_size + raw_tagged_fields_size(&self.tagged_fields);\n");
+    blk.push_str("        }");
+    format!("        {}\n", flex_stmt(flex_min, &blk))
+}
+
+/// The tagged-fields encode statement, merging typed and raw tags in
+/// ascending order. Shared between normal structs and shell twins.
+fn tagged_encode_stmt(tagged: &[&FieldSpec], flex_min: i16) -> String {
+    if tagged.is_empty() {
+        return format!(
+            "        {}\n",
+            flex_stmt(flex_min, "put_tagged_fields(buf, &self.tagged_fields);")
+        );
+    }
+    // Known (typed) tags and unknown raw tags are merged in ascending
+    // tag order — the order Kafka readers require.
+    let mut blk = String::new();
+    blk.push_str("{\n");
+    blk.push_str("            let mut num_tagged = self.tagged_fields.len();\n");
+    for f in tagged {
+        blk.push_str(&format!(
+            "            if {} {{ num_tagged += 1; }}\n",
+            tagged_write_cond(f)
+        ));
+    }
+    blk.push_str("            put_uvarint(buf, num_tagged as u64);\n");
+    // A raw tag can only precede a known tag N > 0; when every known
+    // tag is 0, raw tags always trail and no merge cursor is needed.
+    let needs_merge = tagged.iter().any(|f| tag_number(f) > 0);
+    if needs_merge {
+        blk.push_str("            let mut raw_it = self.tagged_fields.iter().peekable();\n");
+    }
+    for f in tagged {
+        let tag = tag_number(f);
+        blk.push_str(&format!("            if {} {{\n", tagged_write_cond(f)));
+        if tag > 0 {
+            blk.push_str(&format!(
+                "                while let Some((t, d)) = raw_it.peek() {{ if *t < {} {{ put_raw_tagged_field(buf, *t, d); raw_it.next(); }} else {{ break; }} }}\n",
+                tag
+            ));
+        }
+        blk.push_str(&format!("                put_uvarint(buf, {}u64);\n", tag));
+        blk.push_str(&format!(
+            "                let data_len = {{ let mut size = 0usize;\n{}                size }};\n",
+            field_size_body(f, flex_min, false)
+        ));
+        blk.push_str("                put_uvarint(buf, data_len as u64);\n");
+        blk.push_str(&field_encode_body(f, flex_min, false));
+        blk.push_str("            }\n");
+    }
+    if needs_merge {
+        blk.push_str("            for (t, d) in raw_it { put_raw_tagged_field(buf, *t, d); }\n");
+    } else {
+        blk.push_str(
+            "            for (t, d) in &self.tagged_fields { put_raw_tagged_field(buf, *t, d); }\n",
+        );
+    }
+    blk.push_str("        }");
+    format!("        {}\n", flex_stmt(flex_min, &blk))
+}
+
+/// The decode method plus closing brace of a struct's impl block (shared tail
+/// of [`emit_struct`]).
+fn emit_struct_decode_and_close(
+    out: &mut String,
+    name: &str,
+    fields: &[FieldSpec],
+    flex_min: i16,
+    top: Option<&TopLevel>,
+    tagged: &[&FieldSpec],
+) {
     // decode
     out.push_str("    pub fn decode(version: i16, buf: &mut Bytes) -> Result<Self, DecodeError> {\n");
     if top.is_some() {
@@ -417,19 +440,7 @@ fn emit_struct(
             blk.push_str("            for _ in 0..count {\n");
             blk.push_str("                let (tag, mut data) = get_tagged_field(buf)?;\n");
             blk.push_str("                match tag {\n");
-            for f in &tagged {
-                let guard = tagged_guard_expr(f);
-                let arm = if guard == "true" {
-                    format!("{}", tag_number(f))
-                } else {
-                    format!("{} if {}", tag_number(f), guard)
-                };
-                blk.push_str(&format!("                    {} => {{\n", arm));
-                blk.push_str("                        let buf = &mut data;\n");
-                blk.push_str(&field_decode_body(f, flex_min));
-                blk.push_str("                        if !buf.is_empty() { return Err(DecodeError::TrailingBytes { remaining: buf.len() }); }\n");
-                blk.push_str("                    }\n");
-            }
+            blk.push_str(&tagged_known_arms(tagged, flex_min));
             blk.push_str("                    _ => raw.push((tag, data)),\n");
             blk.push_str("                }\n");
             blk.push_str("            }\n");
@@ -441,8 +452,6 @@ fn emit_struct(
     out.push_str("        Ok(msg)\n");
     out.push_str("    }\n");
     out.push_str("}\n");
-
-    out
 }
 
 fn generate_field_decl(field: &FieldSpec) -> String {
@@ -480,7 +489,7 @@ fn nullable_guard(field: &FieldSpec) -> Option<String> {
     Some(version_guard_expr(nmin, nmax))
 }
 
-fn generate_field_size(field: &FieldSpec, flex_min: i16) -> String {
+fn generate_field_size(field: &FieldSpec, flex_min: i16, chunks: bool) -> String {
     if field.tag.is_some() {
         return String::new();
     }
@@ -489,14 +498,14 @@ fn generate_field_size(field: &FieldSpec, flex_min: i16) -> String {
     format!(
         "{}{}        }}\n",
         guard_open(&guard),
-        field_size_body(field, flex_min)
+        field_size_body(field, flex_min, chunks)
     )
 }
 
 /// The size statements for one field, WITHOUT the version guard — reused by
 /// [`generate_field_size`] (which adds the guard) and by the tagged-fields
 /// section (which computes a tagged field's data length under its own guard).
-fn field_size_body(field: &FieldSpec, flex_min: i16) -> String {
+fn field_size_body(field: &FieldSpec, flex_min: i16, chunks: bool) -> String {
     let fname = field_ident(&field.name);
     let is_array = field.field_type.starts_with("[]");
     let nguard = nullable_guard(field);
@@ -553,14 +562,14 @@ fn field_size_body(field: &FieldSpec, flex_min: i16) -> String {
     } else {
         lines.push_str(&format!(
             "            size += {};\n",
-            scalar_size_expr(&inner_type, &fname, nguard.as_deref(), flex_min)
+            scalar_size_expr(&inner_type, &fname, nguard.as_deref(), flex_min, chunks)
         ));
     }
 
     lines
 }
 
-fn generate_field_encode(field: &FieldSpec, flex_min: i16) -> String {
+fn generate_field_encode(field: &FieldSpec, flex_min: i16, chunks: bool) -> String {
     if field.tag.is_some() {
         return String::new();
     }
@@ -569,13 +578,13 @@ fn generate_field_encode(field: &FieldSpec, flex_min: i16) -> String {
     format!(
         "{}{}        }}\n",
         guard_open(&guard),
-        field_encode_body(field, flex_min)
+        field_encode_body(field, flex_min, chunks)
     )
 }
 
 /// The encode statements for one field, WITHOUT the version guard — reused by
 /// [`generate_field_encode`] and by the tagged-fields section.
-fn field_encode_body(field: &FieldSpec, flex_min: i16) -> String {
+fn field_encode_body(field: &FieldSpec, flex_min: i16, chunks: bool) -> String {
     let fname = field_ident(&field.name);
     let is_array = field.field_type.starts_with("[]");
     let nguard = nullable_guard(field);
@@ -628,7 +637,8 @@ fn field_encode_body(field: &FieldSpec, flex_min: i16) -> String {
                 &fname,
                 nguard.as_deref(),
                 flex_min,
-                newtype_for(field)
+                newtype_for(field),
+                chunks
             )
         ));
     }
@@ -907,7 +917,7 @@ fn escape_bytes(s: &str) -> String {
 /// None = the field is never nullable. Outside the nullable range, a `None`
 /// value is a caller bug (panic on encode) and a wire null is a protocol
 /// error (DecodeError::NullForNonNullable on decode) — matching Kafka.
-fn scalar_size_expr(t: &str, fname: &str, nguard: Option<&str>, flex_min: i16) -> String {
+fn scalar_size_expr(t: &str, fname: &str, nguard: Option<&str>, flex_min: i16, chunks: bool) -> String {
     match t {
         "int8" | "bool" => "1".to_string(),
         "int16" | "uint16" => "2".to_string(),
@@ -933,6 +943,26 @@ fn scalar_size_expr(t: &str, fname: &str, nguard: Option<&str>, flex_min: i16) -
                     flex_min,
                     &format!("compact_string_size(self.{fname}.as_str())"),
                     &format!("string_size(self.{fname}.as_str())"),
+                ),
+            }
+        }
+        // Shell mode: records payloads are RecordsChunks (chunk chains).
+        "records" if chunks => {
+            let nullable = flex_cond(
+                flex_min,
+                &format!("compact_nullable_records_chunks_size(self.{fname}.as_ref())"),
+                &format!("nullable_records_chunks_size(self.{fname}.as_ref())"),
+            );
+            match nguard {
+                Some("true") => nullable,
+                Some(ng) => format!(
+                    "if {ng} {{ {nullable} }} else {{ let v = self.{fname}.as_ref().expect(\"field {fname} is None but not nullable at this version\"); {} }}",
+                    flex_cond(flex_min, "compact_records_chunks_size(v)", "records_chunks_size(v)")
+                ),
+                None => flex_cond(
+                    flex_min,
+                    &format!("compact_records_chunks_size(&self.{fname})"),
+                    &format!("records_chunks_size(&self.{fname})"),
                 ),
             }
         }
@@ -972,6 +1002,7 @@ fn scalar_encode_expr(
     nguard: Option<&str>,
     flex_min: i16,
     nt: Option<&str>,
+    chunks: bool,
 ) -> String {
     // Entity int newtypes are tuple structs; project the raw value for encode.
     let iv = if nt.is_some() {
@@ -1008,6 +1039,27 @@ fn scalar_encode_expr(
                     flex_min,
                     &format!("put_compact_string(buf, self.{fname}.as_str())"),
                     &format!("put_string(buf, self.{fname}.as_str())"),
+                ),
+            }
+        }
+        // Shell mode: each chunk of the RecordsChunks payload becomes a shared
+        // segment — never made contiguous, never copied.
+        "records" if chunks => {
+            let nullable = flex_cond(
+                flex_min,
+                &format!("put_compact_nullable_records_chunks_zc(buf, self.{fname}.as_ref())"),
+                &format!("put_nullable_records_chunks_zc(buf, self.{fname}.as_ref())"),
+            );
+            match nguard {
+                Some("true") => nullable,
+                Some(ng) => format!(
+                    "if {ng} {{ {nullable} }} else {{ let v = self.{fname}.as_ref().expect(\"field {fname} is None but not nullable at this version\"); {} }}",
+                    flex_cond(flex_min, "put_compact_records_chunks_zc(buf, v)", "put_records_chunks_zc(buf, v)")
+                ),
+                None => flex_cond(
+                    flex_min,
+                    &format!("put_compact_records_chunks_zc(buf, &self.{fname})"),
+                    &format!("put_records_chunks_zc(buf, &self.{fname})"),
                 ),
             }
         }
@@ -1290,5 +1342,584 @@ fn collect_inline_structs(fields: &[FieldSpec], out: &mut Vec<StructSpec>) {
             });
             collect_inline_structs(&field.fields, out);
         }
+    }
+}
+
+// ── Shell (chunked-payload) code generation ──────────────────────────────────
+//
+// For messages that carry `records` payloads (ProduceRequest, FetchResponse,
+// ShareFetchResponse, FetchSnapshotResponse), emit a parallel `*Shell` type
+// per records-bearing struct: identical fields except records become
+// `RecordsChunks` (zero-copy chunk chains), plus `decode_chained` reading from
+// a `ChunkChain` — so payload-heavy frames never need a contiguous buffer.
+// Structs reachable inline but without records keep their normal type and
+// only gain a `decode_chained` impl; structs that appear solely inside tagged
+// data keep using the ordinary buffer decode (tagged data is contiguous).
+
+/// The known-tag match arms of a tagged-fields decode loop. Shared between the
+/// contiguous decode and the shell chain decode: tagged data is surfaced as a
+/// contiguous `Bytes` either way, so the arm bodies use the buffer decoders.
+fn tagged_known_arms(tagged: &[&FieldSpec], flex_min: i16) -> String {
+    let mut out = String::new();
+    for f in tagged {
+        let guard = tagged_guard_expr(f);
+        let arm = if guard == "true" {
+            tag_number(f).to_string()
+        } else {
+            format!("{} if {}", tag_number(f), guard)
+        };
+        out.push_str(&format!("                    {} => {{\n", arm));
+        out.push_str("                        let buf = &mut data;\n");
+        out.push_str(&field_decode_body(f, flex_min));
+        out.push_str("                        if !buf.is_empty() { return Err(DecodeError::TrailingBytes { remaining: buf.len() }); }\n");
+        out.push_str("                    }\n");
+    }
+    out
+}
+
+struct ShellCtx {
+    /// Structs that transitively contain records — they get a Shell twin.
+    shells: std::collections::HashSet<String>,
+    /// Structs reachable through inline (non-tagged) fields — superset of
+    /// `shells`; the non-shell ones gain a `decode_chained` impl.
+    inline: std::collections::HashSet<String>,
+}
+
+impl ShellCtx {
+    fn shellify(&self, name: &str) -> String {
+        if self.shells.contains(name) {
+            format!("{}Shell", name)
+        } else {
+            name.to_string()
+        }
+    }
+}
+
+fn base_field_type(field: &FieldSpec) -> &str {
+    if field.field_type.starts_with("[]") {
+        field.field_type[2..].trim()
+    } else {
+        field.field_type.as_str()
+    }
+}
+
+fn fields_have_records(
+    fields: &[FieldSpec],
+    by_name: &std::collections::HashMap<String, Vec<FieldSpec>>,
+) -> bool {
+    fields.iter().filter(|f| f.tag.is_none()).any(|f| {
+        let base = base_field_type(f);
+        base == "records"
+            || by_name
+                .get(base)
+                .is_some_and(|nested| fields_have_records(nested, by_name))
+    })
+}
+
+fn collect_inline_reachable(
+    fields: &[FieldSpec],
+    by_name: &std::collections::HashMap<String, Vec<FieldSpec>>,
+    out: &mut std::collections::HashSet<String>,
+) {
+    for f in fields.iter().filter(|f| f.tag.is_none()) {
+        let base = base_field_type(f);
+        if let Some(nested) = by_name.get(base) {
+            if out.insert(base.to_string()) {
+                collect_inline_reachable(nested, by_name, out);
+            }
+        }
+    }
+}
+
+/// Emit the shell code for a message, or an empty string when the message has
+/// no records fields (the vast majority).
+pub fn generate_shell_code(spec: &MessageSpec) -> String {
+    let (valid_min, valid_max) = parse_versions(&spec.valid_versions);
+    if valid_min > valid_max {
+        return String::new();
+    }
+    let (flex_min, _) = parse_versions(&spec.flexible_versions);
+
+    let mut structs: Vec<StructSpec> = spec.common_structs.clone();
+    collect_inline_structs(&spec.fields, &mut structs);
+    let by_name: std::collections::HashMap<String, Vec<FieldSpec>> = structs
+        .iter()
+        .map(|s| (s.name.clone(), s.fields.clone()))
+        .collect();
+
+    if !fields_have_records(&spec.fields, &by_name) {
+        return String::new();
+    }
+
+    let mut inline = std::collections::HashSet::new();
+    collect_inline_reachable(&spec.fields, &by_name, &mut inline);
+    let shells: std::collections::HashSet<String> = inline
+        .iter()
+        .filter(|n| fields_have_records(&by_name[*n], &by_name))
+        .cloned()
+        .collect();
+    let ctx = ShellCtx { shells, inline };
+
+    let mut out = String::new();
+    out.push_str("\n// ── Shell (chunked-payload) variants ─────────────────────────────────────────\n");
+    out.push_str("// Records payloads decode as zero-copy chunk chains (`RecordsChunks`) from a\n");
+    out.push_str("// `ChunkChain`, so payload-heavy frames never need one contiguous buffer.\n\n");
+
+    let mut emitted = std::collections::HashSet::new();
+    for s in &structs {
+        if !emitted.insert(s.name.clone()) {
+            continue;
+        }
+        if ctx.shells.contains(&s.name) {
+            out.push_str(&emit_shell_struct(&s.name, &s.fields, flex_min, None, &ctx));
+        } else if ctx.inline.contains(&s.name) {
+            out.push_str(&emit_decode_chained_impl(&s.name, &s.fields, flex_min, None, &ctx));
+        }
+    }
+    out.push_str(&emit_shell_struct(
+        &spec.name,
+        &spec.fields,
+        flex_min,
+        Some(&spec.name),
+        &ctx,
+    ));
+    out
+}
+
+/// Shell field type: records -> RecordsChunks; records-bearing struct -> Shell.
+fn shell_field_type(field: &FieldSpec, ctx: &ShellCtx) -> (String, bool) {
+    let is_array = field.field_type.starts_with("[]");
+    let is_nullable = !field.nullable_versions.is_empty();
+    let base = base_field_type(field);
+    let mapped = if base == "records" {
+        "RecordsChunks".to_string()
+    } else if ctx.shells.contains(base) {
+        format!("{}Shell", base)
+    } else {
+        newtype_for(field)
+            .map(str::to_string)
+            .unwrap_or_else(|| primitive_rust_type(base))
+    };
+    if is_array {
+        (format!("Vec<{}>", mapped), is_nullable)
+    } else {
+        (mapped, is_nullable)
+    }
+}
+
+fn shell_default_value_expr(field: &FieldSpec, ctx: &ShellCtx) -> String {
+    let base = base_field_type(field);
+    let d = default_value_expr(field);
+    if base == "records" {
+        d.replace("Bytes::new()", "RecordsChunks::new()")
+    } else if ctx.shells.contains(base) {
+        d.replace(
+            &format!("{}::default()", base),
+            &format!("{}Shell::default()", base),
+        )
+    } else {
+        d
+    }
+}
+
+fn shell_field_decl(field: &FieldSpec, ctx: &ShellCtx) -> String {
+    let (rust_type, optional) = shell_field_type(field, ctx);
+    let fname = field_ident(&field.name);
+    let mut out = String::new();
+    if !field.about.is_empty() {
+        out.push_str(&format!(
+            "    /// {}\n",
+            field.about.replace('\n', " ").trim()
+        ));
+    }
+    if optional {
+        out.push_str(&format!("    pub {}: Option<{}>,\n", fname, rust_type));
+    } else {
+        out.push_str(&format!("    pub {}: {},\n", fname, rust_type));
+    }
+    out
+}
+
+/// Emit a Shell twin: declaration, Default, decode_chained, encoded_size,
+/// encode. `top` carries the base message name for version validation.
+fn emit_shell_struct(
+    name: &str,
+    fields: &[FieldSpec],
+    flex_min: i16,
+    top: Option<&str>,
+    ctx: &ShellCtx,
+) -> String {
+    let shell = format!("{}Shell", name);
+    let mut tagged: Vec<&FieldSpec> = fields.iter().filter(|f| f.tag.is_some()).collect();
+    tagged.sort_by_key(|f| tag_number(f));
+
+    let defaults: Vec<(String, String)> = fields
+        .iter()
+        .map(|f| (field_ident(&f.name), shell_default_value_expr(f, ctx)))
+        .collect();
+    let all_trivial = defaults.iter().all(|(_, expr)| {
+        matches!(
+            expr.as_str(),
+            "0" | "0.0"
+                | "false"
+                | "None"
+                | "Bytes::new()"
+                | "StrBytes::new()"
+                | "Vec::new()"
+                | "Uuid::nil()"
+                | "RecordsChunks::new()"
+        ) || expr.ends_with("::default()")
+    });
+
+    let mut out = String::new();
+    out.push_str(&format!(
+        "/// Shell (chunked-payload) variant of [`{}`]: identical except records\n/// payloads are `RecordsChunks` chunk chains instead of contiguous `Bytes`.\n",
+        name
+    ));
+    if all_trivial {
+        out.push_str("#[derive(Debug, Clone, PartialEq, Default)]\n");
+    } else {
+        out.push_str("#[derive(Debug, Clone, PartialEq)]\n");
+    }
+    out.push_str(&format!("pub struct {} {{\n", shell));
+    for field in fields {
+        out.push_str(&shell_field_decl(field, ctx));
+    }
+    out.push_str("    /// Unknown/raw tagged fields (flexible versions), ascending tag order.\n");
+    out.push_str("    pub tagged_fields: Vec<(u32, Bytes)>,\n");
+    out.push_str("}\n\n");
+
+    if !all_trivial {
+        out.push_str(&format!("impl Default for {} {{\n", shell));
+        out.push_str("    fn default() -> Self {\n");
+        out.push_str("        Self {\n");
+        for (fname, expr) in &defaults {
+            out.push_str(&format!("            {}: {},\n", fname, expr));
+        }
+        out.push_str("            tagged_fields: Vec::new(),\n");
+        out.push_str("        }\n");
+        out.push_str("    }\n");
+        out.push_str("}\n\n");
+    }
+
+    out.push_str(&format!("impl {} {{\n", shell));
+
+    // decode_chained
+    out.push_str("    /// Decode from a chunk chain; records payloads come out as zero-copy\n");
+    out.push_str("    /// chunk slices (see `frame::read_frame_supplied`).\n");
+    out.push_str(
+        "    pub fn decode_chained(version: i16, ch: &mut ChunkChain) -> Result<Self, DecodeError> {\n",
+    );
+    if let Some(base) = top {
+        out.push_str(&format!(
+            "        if !({b}::VALID_MIN_VERSION..={b}::VALID_MAX_VERSION).contains(&version) {{\n            return Err(DecodeError::UnsupportedVersion {{ api_key: {b}::API_KEY, version }});\n        }}\n",
+            b = base
+        ));
+    }
+    out.push_str(&format!("        let mut msg = {}::default();\n", shell));
+    for field in fields {
+        out.push_str(&shell_field_decode(field, flex_min, ctx));
+    }
+    if flex_min != i16::MAX {
+        out.push_str(&shell_tagged_decode_stmt(&tagged, flex_min));
+    }
+    out.push_str("        Ok(msg)\n");
+    out.push_str("    }\n\n");
+
+    // encoded_size / encode: same emission as the normal struct, with records
+    // fields sized/emitted as chunk chains (chunks = true).
+    let version_check = if let Some(base) = top {
+        format!(
+            "        if !({b}::VALID_MIN_VERSION..={b}::VALID_MAX_VERSION).contains(&version) {{\n            return Err(EncodeError::UnsupportedVersion {{ api_key: {b}::API_KEY, version }});\n        }}\n",
+            b = base
+        )
+    } else {
+        String::new()
+    };
+
+    if top.is_some() {
+        out.push_str("    pub fn encoded_size(&self, version: i16) -> Result<usize, EncodeError> {\n");
+    } else {
+        out.push_str("    pub fn encoded_size(&self, version: i16) -> usize {\n");
+    }
+    out.push_str(&version_check);
+    out.push_str("        let mut size = 0usize;\n");
+    for field in fields {
+        out.push_str(&generate_field_size(field, flex_min, true));
+    }
+    if flex_min != i16::MAX {
+        out.push_str(&tagged_size_stmt(&tagged, flex_min));
+    }
+    if top.is_some() {
+        out.push_str("        Ok(size)\n");
+    } else {
+        out.push_str("        size\n");
+    }
+    out.push_str("    }\n\n");
+
+    if top.is_some() {
+        out.push_str(
+            "    /// Encode; each records chunk becomes a shared segment on a zero-copy sink.\n",
+        );
+        out.push_str(
+            "    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) -> Result<(), EncodeError> {\n",
+        );
+    } else {
+        out.push_str("    pub fn encode<B: WireBuf>(&self, version: i16, buf: &mut B) {\n");
+    }
+    out.push_str(&version_check);
+    for field in fields {
+        out.push_str(&generate_field_encode(field, flex_min, true));
+    }
+    if flex_min != i16::MAX {
+        out.push_str(&tagged_encode_stmt(&tagged, flex_min));
+    }
+    if top.is_some() {
+        out.push_str("        Ok(())\n");
+    }
+    out.push_str("    }\n");
+    out.push_str("}\n\n");
+    out
+}
+
+/// For inline-reachable structs WITHOUT records: the normal type gains a
+/// `decode_chained` so it can be parsed from the chain in shell context.
+fn emit_decode_chained_impl(
+    name: &str,
+    fields: &[FieldSpec],
+    flex_min: i16,
+    top: Option<&str>,
+    ctx: &ShellCtx,
+) -> String {
+    let mut tagged: Vec<&FieldSpec> = fields.iter().filter(|f| f.tag.is_some()).collect();
+    tagged.sort_by_key(|f| tag_number(f));
+    let mut out = String::new();
+    out.push_str(&format!("impl {} {{\n", name));
+    out.push_str("    /// Decode from a chunk chain (shell path); identical result to `decode`.\n");
+    out.push_str(
+        "    pub fn decode_chained(version: i16, ch: &mut ChunkChain) -> Result<Self, DecodeError> {\n",
+    );
+    if let Some(base) = top {
+        out.push_str(&format!(
+            "        if !({b}::VALID_MIN_VERSION..={b}::VALID_MAX_VERSION).contains(&version) {{\n            return Err(DecodeError::UnsupportedVersion {{ api_key: {b}::API_KEY, version }});\n        }}\n",
+            b = base
+        ));
+    }
+    out.push_str(&format!("        let mut msg = {}::default();\n", name));
+    for field in fields {
+        out.push_str(&shell_field_decode(field, flex_min, ctx));
+    }
+    if flex_min != i16::MAX {
+        out.push_str(&shell_tagged_decode_stmt(&tagged, flex_min));
+    }
+    out.push_str("        Ok(msg)\n");
+    out.push_str("    }\n");
+    out.push_str("}\n\n");
+    out
+}
+
+fn shell_tagged_decode_stmt(tagged: &[&FieldSpec], flex_min: i16) -> String {
+    if tagged.is_empty() {
+        return format!(
+            "        {}\n",
+            flex_stmt(flex_min, "msg.tagged_fields = ch_get_tagged_fields(ch)?;")
+        );
+    }
+    let mut blk = String::new();
+    blk.push_str("{\n");
+    blk.push_str("            let count = ch_get_uvarint32(ch)? as usize;\n");
+    blk.push_str("            let mut raw: Vec<(u32, Bytes)> = Vec::with_capacity(count.min(ch.remaining() / 2));\n");
+    blk.push_str("            for _ in 0..count {\n");
+    blk.push_str("                let (tag, mut data) = ch_get_tagged_field(ch)?;\n");
+    blk.push_str("                match tag {\n");
+    blk.push_str(&tagged_known_arms(tagged, flex_min));
+    blk.push_str("                    _ => raw.push((tag, data)),\n");
+    blk.push_str("                }\n");
+    blk.push_str("            }\n");
+    blk.push_str("            msg.tagged_fields = raw;\n");
+    blk.push_str("        }");
+    format!("        {}\n", flex_stmt(flex_min, &blk))
+}
+
+fn shell_field_decode(field: &FieldSpec, flex_min: i16, ctx: &ShellCtx) -> String {
+    if field.tag.is_some() {
+        return String::new();
+    }
+    let fname = field_ident(&field.name);
+    let (_, ver_min, ver_max) = field_version_guard(field);
+    let guard = version_guard_expr(ver_min, ver_max);
+    let is_array = field.field_type.starts_with("[]");
+    let nguard = nullable_guard(field);
+    let inner_type = base_field_type(field).to_string();
+
+    let mut lines = String::new();
+    lines.push_str(&guard_open(&guard));
+
+    if is_array {
+        let elem_dec = shell_element_decode_expr(&inner_type, flex_min, newtype_for(field), ctx);
+        lines.push_str(&format!(
+            "            let len_opt = {};\n",
+            flex_cond(
+                flex_min,
+                "{ let n = ch_get_uvarint32(ch)?; if n == 0 { None } else { Some((n - 1) as usize) } }",
+                "{ let n = ch_get_i32(ch)?; if n < 0 { None } else { Some(n as usize) } }"
+            )
+        ));
+        let loop_body = format!(
+            "let mut items = Vec::with_capacity(count.min(ch.remaining()));\n                for _ in 0..count {{ items.push({}?); }}\n",
+            elem_dec
+        );
+        if let Some(ng) = &nguard {
+            lines.push_str(&format!("            msg.{} = match len_opt {{\n", fname));
+            lines.push_str("                Some(count) => {\n");
+            lines.push_str(&format!("                {}", loop_body));
+            lines.push_str("                Some(items)\n");
+            lines.push_str("                }\n");
+            if ng == "true" {
+                lines.push_str("                None => None,\n");
+            } else {
+                lines.push_str(&format!(
+                    "                None => {{ if {ng} {{ None }} else {{ return Err(DecodeError::NullForNonNullable); }} }}\n"
+                ));
+            }
+            lines.push_str("            };\n");
+        } else {
+            lines.push_str(
+                "            let count = len_opt.ok_or(DecodeError::NullForNonNullable)?;\n",
+            );
+            lines.push_str(&format!("            {{ {}", loop_body));
+            lines.push_str(&format!("            msg.{} = items; }}\n", fname));
+        }
+    } else {
+        lines.push_str(&format!(
+            "            msg.{} = {};\n",
+            fname,
+            shell_scalar_decode_expr(
+                &inner_type,
+                nguard.as_deref(),
+                flex_min,
+                newtype_for(field),
+                ctx
+            )
+        ));
+    }
+
+    lines.push_str("        }\n");
+    lines
+}
+
+fn shell_scalar_decode_expr(
+    t: &str,
+    nguard: Option<&str>,
+    flex_min: i16,
+    nt: Option<&str>,
+    ctx: &ShellCtx,
+) -> String {
+    let wrap_int = |e: String| match nt {
+        Some(nt) => format!("{}({})", nt, e),
+        None => e,
+    };
+    match t {
+        "int8" => "ch_get_i8(ch)?".to_string(),
+        "int16" => "ch_get_i16(ch)?".to_string(),
+        "int32" => wrap_int("ch_get_i32(ch)?".to_string()),
+        "int64" => wrap_int("ch_get_i64(ch)?".to_string()),
+        "uint16" => "ch_get_u16(ch)?".to_string(),
+        "uint32" => "ch_get_u32(ch)?".to_string(),
+        "float64" => "ch_get_f64(ch)?".to_string(),
+        "bool" => "ch_get_bool(ch)?".to_string(),
+        "uuid" => "ch_get_uuid(ch)?".to_string(),
+        "string" => {
+            let read = flex_cond(
+                flex_min,
+                "ch_get_compact_string(ch)?",
+                "ch_get_string(ch)?",
+            );
+            match nguard {
+                Some("true") => match nt {
+                    Some(nt) => format!("({read}).map({nt})"),
+                    None => read,
+                },
+                Some(ng) => {
+                    let opt = format!(
+                        "{{ let v = {read}; if {ng} {{ v }} else {{ Some(v.ok_or(DecodeError::NullForNonNullable)?) }} }}"
+                    );
+                    match nt {
+                        Some(nt) => format!("{opt}.map({nt})"),
+                        None => opt,
+                    }
+                }
+                None => {
+                    let val = format!("({read}).ok_or(DecodeError::NullForNonNullable)?");
+                    match nt {
+                        Some(nt) => format!("{}({})", nt, val),
+                        None => val,
+                    }
+                }
+            }
+        }
+        "bytes" => {
+            let read = flex_cond(flex_min, "ch_get_compact_bytes(ch)?", "ch_get_bytes(ch)?");
+            match nguard {
+                Some("true") => read,
+                Some(ng) => format!(
+                    "{{ let v = {read}; if {ng} {{ v }} else {{ Some(v.ok_or(DecodeError::NullForNonNullable)?) }} }}"
+                ),
+                None => format!("({read}).ok_or(DecodeError::NullForNonNullable)?"),
+            }
+        }
+        "records" => {
+            let read = flex_cond(
+                flex_min,
+                "ch_get_compact_records(ch)?",
+                "ch_get_records(ch)?",
+            );
+            match nguard {
+                Some("true") => read,
+                Some(ng) => format!(
+                    "{{ let v = {read}; if {ng} {{ v }} else {{ Some(v.ok_or(DecodeError::NullForNonNullable)?) }} }}"
+                ),
+                None => format!("({read}).ok_or(DecodeError::NullForNonNullable)?"),
+            }
+        }
+        other => {
+            let ty = ctx.shellify(other);
+            match nguard {
+                Some("true") => format!(
+                    "if ch_get_i8(ch)? < 0 {{ None }} else {{ Some({ty}::decode_chained(version, ch)?) }}"
+                ),
+                Some(ng) => format!(
+                    "if {ng} {{ if ch_get_i8(ch)? < 0 {{ None }} else {{ Some({ty}::decode_chained(version, ch)?) }} }} else {{ Some({ty}::decode_chained(version, ch)?) }}"
+                ),
+                None => format!("{}::decode_chained(version, ch)?", ty),
+            }
+        }
+    }
+}
+
+fn shell_element_decode_expr(t: &str, flex_min: i16, nt: Option<&str>, ctx: &ShellCtx) -> String {
+    let wrap = |e: String| match nt {
+        Some(nt) => format!("({}).map({})", e, nt),
+        None => e,
+    };
+    match t {
+        "int8" => "ch_get_i8(ch)".to_string(),
+        "int16" => "ch_get_i16(ch)".to_string(),
+        "int32" => wrap("ch_get_i32(ch)".to_string()),
+        "int64" => wrap("ch_get_i64(ch)".to_string()),
+        "uint16" => "ch_get_u16(ch)".to_string(),
+        "uint32" => "ch_get_u32(ch)".to_string(),
+        "float64" => "ch_get_f64(ch)".to_string(),
+        "bool" => "ch_get_bool(ch)".to_string(),
+        "uuid" => "ch_get_uuid(ch)".to_string(),
+        "string" => wrap(format!(
+            "({}).and_then(|o| o.ok_or(DecodeError::NullForNonNullable))",
+            flex_cond(flex_min, "ch_get_compact_string(ch)", "ch_get_string(ch)")
+        )),
+        "bytes" | "records" => format!(
+            "({}).and_then(|o| o.ok_or(DecodeError::NullForNonNullable))",
+            flex_cond(flex_min, "ch_get_compact_bytes(ch)", "ch_get_bytes(ch)")
+        ),
+        other => format!("{}::decode_chained(version, ch)", ctx.shellify(other)),
     }
 }

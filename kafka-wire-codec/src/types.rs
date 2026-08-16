@@ -279,6 +279,111 @@ int_newtype! {
     ProducerId, i64
 }
 
+/// A records payload held as a chain of `Bytes` chunks instead of one
+/// contiguous buffer.
+///
+/// This is the "cargo" type of the shell decode path: record batches read from
+/// the wire land here as zero-copy slices of pool-sized read chunks, and the
+/// shell encoder splices them back out as refcounted frame segments — the
+/// payload is never made contiguous and never copied. Equality compares
+/// logical bytes, ignoring chunk boundaries.
+#[derive(Debug, Clone, Default)]
+pub struct RecordsChunks {
+    chunks: Vec<Bytes>,
+    len: usize,
+}
+
+impl RecordsChunks {
+    pub const fn new() -> Self {
+        RecordsChunks {
+            chunks: Vec::new(),
+            len: 0,
+        }
+    }
+
+    /// Append a chunk (empty chunks are dropped).
+    pub fn push(&mut self, chunk: Bytes) {
+        if !chunk.is_empty() {
+            self.len += chunk.len();
+            self.chunks.push(chunk);
+        }
+    }
+
+    /// Total payload length in bytes, across all chunks.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// The chunks, in payload order.
+    pub fn chunks(&self) -> &[Bytes] {
+        &self.chunks
+    }
+
+    pub fn into_chunks(self) -> Vec<Bytes> {
+        self.chunks
+    }
+
+    /// Copy into one contiguous `Bytes`. A single-chunk payload returns a
+    /// cheap refcounted clone; multi-chunk pays one copy — for inspection and
+    /// tests, not the hot path.
+    pub fn to_contiguous(&self) -> Bytes {
+        match self.chunks.as_slice() {
+            [] => Bytes::new(),
+            [one] => one.clone(),
+            many => {
+                let mut out = Vec::with_capacity(self.len);
+                for c in many {
+                    out.extend_from_slice(c);
+                }
+                Bytes::from(out)
+            }
+        }
+    }
+}
+
+impl From<Bytes> for RecordsChunks {
+    fn from(b: Bytes) -> Self {
+        let mut c = RecordsChunks::new();
+        c.push(b);
+        c
+    }
+}
+
+impl PartialEq for RecordsChunks {
+    /// Logical byte equality — chunk boundaries don't matter.
+    fn eq(&self, other: &Self) -> bool {
+        if self.len != other.len {
+            return false;
+        }
+        let (mut ai, mut bi, mut ao, mut bo) = (0usize, 0usize, 0usize, 0usize);
+        while ai < self.chunks.len() && bi < other.chunks.len() {
+            let a = &self.chunks[ai][ao..];
+            let b = &other.chunks[bi][bo..];
+            let n = a.len().min(b.len());
+            if a[..n] != b[..n] {
+                return false;
+            }
+            ao += n;
+            bo += n;
+            if ao == self.chunks[ai].len() {
+                ai += 1;
+                ao = 0;
+            }
+            if bo == other.chunks[bi].len() {
+                bi += 1;
+                bo = 0;
+            }
+        }
+        true
+    }
+}
+
+impl Eq for RecordsChunks {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

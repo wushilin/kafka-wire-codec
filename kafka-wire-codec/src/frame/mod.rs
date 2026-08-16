@@ -1,8 +1,10 @@
+use crate::codec::chain::ChunkChain;
 use crate::codec::SegmentedBuf;
 use crate::error::{DecodeError, EncodeError};
 use crate::generated::kinds::{RequestKind, ResponseKind};
 use crate::header::{RequestHeader, ResponseHeader};
 use crate::message::{Encodable, EncodableZeroCopy};
+use crate::supply::{BufferSupplier, ReadStrategy};
 use bytes::{Bytes, BytesMut};
 use std::io::{Read, Write};
 
@@ -228,6 +230,171 @@ fn take_frame(buf: &mut BytesMut, start: usize, len: usize) -> Bytes {
     } else {
         buf.split_off(start).freeze()
     }
+}
+
+/// A frame body read under a [`BufferSupplier`]'s strategy: either one
+/// contiguous buffer (decode with `Message::decode`) or a chain of chunks
+/// (decode with the message's `*Shell::decode_chained`).
+pub enum SuppliedFrame {
+    Contiguous(Bytes),
+    Chunked(ChunkChain),
+}
+
+impl SuppliedFrame {
+    /// Body length in bytes.
+    pub fn len(&self) -> usize {
+        match self {
+            SuppliedFrame::Contiguous(b) => b.len(),
+            SuppliedFrame::Chunked(c) => c.remaining(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+/// Read one frame under a [`BufferSupplier`]'s policy: the supplier sees the
+/// exact frame length (from the 4-byte prefix, before any body byte is read)
+/// and picks contiguous vs. chunked; `acquire` provides every buffer used.
+pub fn read_frame_supplied<R: Read, S: BufferSupplier + ?Sized>(
+    reader: &mut R,
+    supplier: &S,
+) -> Result<SuppliedFrame, DecodeError> {
+    read_frame_supplied_with_limit(reader, supplier, DEFAULT_MAX_FRAME_SIZE)
+}
+
+/// [`read_frame_supplied`] with a caller-chosen frame-size cap.
+pub fn read_frame_supplied_with_limit<R: Read, S: BufferSupplier + ?Sized>(
+    reader: &mut R,
+    supplier: &S,
+    max: usize,
+) -> Result<SuppliedFrame, DecodeError> {
+    let mut len_buf = [0u8; 4];
+    reader.read_exact(&mut len_buf)?;
+    let len = checked_len(i32::from_be_bytes(len_buf), max)?;
+    match supplier.strategy(len) {
+        ReadStrategy::Contiguous => {
+            let mut buf = supplier.acquire(len);
+            read_exact_into(reader, &mut buf, len)?;
+            Ok(SuppliedFrame::Contiguous(buf.freeze()))
+        }
+        ReadStrategy::Chunked { chunk_size } => {
+            let chunk_size = chunk_size.max(1);
+            let mut chunks: Vec<Bytes> = Vec::with_capacity(len.div_ceil(chunk_size));
+            let mut left = len;
+            while left > 0 {
+                let want = left.min(chunk_size);
+                let mut buf = supplier.acquire(want);
+                read_exact_into(reader, &mut buf, want)?;
+                chunks.push(buf.freeze());
+                left -= want;
+            }
+            Ok(SuppliedFrame::Chunked(ChunkChain::new(chunks)))
+        }
+    }
+}
+
+/// Append exactly `len` bytes from `reader` to `buf` (sync; the buffer tail is
+/// zero-initialized before the read, which is cheap relative to the I/O).
+fn read_exact_into<R: Read>(
+    reader: &mut R,
+    buf: &mut BytesMut,
+    len: usize,
+) -> Result<(), DecodeError> {
+    let start = buf.len();
+    buf.resize(start + len, 0);
+    let mut filled = 0usize;
+    while filled < len {
+        match reader.read(&mut buf[start + filled..]) {
+            Ok(0) => {
+                buf.truncate(start);
+                return Err(DecodeError::UnexpectedEof {
+                    needed: len,
+                    available: filled,
+                });
+            }
+            Ok(n) => filled += n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(e) => {
+                buf.truncate(start);
+                return Err(e.into());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Async [`read_frame_supplied`].
+#[cfg(feature = "async")]
+pub async fn read_frame_supplied_async<R, S>(
+    reader: &mut R,
+    supplier: &S,
+) -> Result<SuppliedFrame, DecodeError>
+where
+    R: tokio::io::AsyncRead + Unpin,
+    S: BufferSupplier + ?Sized,
+{
+    read_frame_supplied_async_with_limit(reader, supplier, DEFAULT_MAX_FRAME_SIZE).await
+}
+
+/// Async [`read_frame_supplied_with_limit`]. Chunk reads append into spare
+/// capacity via `read_buf` — no pre-zeroing.
+#[cfg(feature = "async")]
+pub async fn read_frame_supplied_async_with_limit<R, S>(
+    reader: &mut R,
+    supplier: &S,
+    max: usize,
+) -> Result<SuppliedFrame, DecodeError>
+where
+    R: tokio::io::AsyncRead + Unpin,
+    S: BufferSupplier + ?Sized,
+{
+    use tokio::io::AsyncReadExt;
+    let len = checked_len(reader.read_i32().await?, max)?;
+    match supplier.strategy(len) {
+        ReadStrategy::Contiguous => {
+            let mut buf = supplier.acquire(len);
+            fill_async(reader, &mut buf, len).await?;
+            Ok(SuppliedFrame::Contiguous(buf.freeze()))
+        }
+        ReadStrategy::Chunked { chunk_size } => {
+            let chunk_size = chunk_size.max(1);
+            let mut chunks: Vec<Bytes> = Vec::with_capacity(len.div_ceil(chunk_size));
+            let mut left = len;
+            while left > 0 {
+                let want = left.min(chunk_size);
+                let mut buf = supplier.acquire(want);
+                fill_async(reader, &mut buf, want).await?;
+                chunks.push(buf.freeze());
+                left -= want;
+            }
+            Ok(SuppliedFrame::Chunked(ChunkChain::new(chunks)))
+        }
+    }
+}
+
+/// Append exactly `len` bytes from `reader` to `buf` without pre-zeroing.
+#[cfg(feature = "async")]
+async fn fill_async<R>(reader: &mut R, buf: &mut BytesMut, len: usize) -> Result<(), DecodeError>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    use tokio::io::AsyncReadExt;
+    let start = buf.len();
+    buf.reserve(len);
+    let mut limited = reader.take(len as u64);
+    while buf.len() - start < len {
+        if limited.read_buf(buf).await? == 0 {
+            let available = buf.len() - start;
+            buf.truncate(start);
+            return Err(DecodeError::UnexpectedEof {
+                needed: len,
+                available,
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Write one length-prefixed Kafka frame to a sync writer.

@@ -1,5 +1,7 @@
+pub mod chain;
+
 use crate::error::DecodeError;
-use crate::types::StrBytes;
+use crate::types::{RecordsChunks, StrBytes};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use uuid::Uuid;
 
@@ -493,6 +495,66 @@ pub fn put_raw_tagged_field<B: WireBuf>(buf: &mut B, tag: u32, data: &Bytes) {
     // Plain uvarint length prefix + raw data (NOT compact bytes).
     put_uvarint(buf, data.len() as u64);
     buf.put_shared(data);
+}
+
+// Chunked-records variants: the shell encoders emit each chunk of a
+// RecordsChunks payload as a shared segment — the payload is never made
+// contiguous and never copied.
+
+pub fn records_chunks_size(c: &RecordsChunks) -> usize {
+    4 + c.len()
+}
+
+pub fn nullable_records_chunks_size(c: Option<&RecordsChunks>) -> usize {
+    match c {
+        None => 4,
+        Some(c) => 4 + c.len(),
+    }
+}
+
+pub fn compact_records_chunks_size(c: &RecordsChunks) -> usize {
+    uvarint_size(c.len() as u64 + 1) + c.len()
+}
+
+pub fn compact_nullable_records_chunks_size(c: Option<&RecordsChunks>) -> usize {
+    match c {
+        None => 1,
+        Some(c) => compact_records_chunks_size(c),
+    }
+}
+
+pub fn put_records_chunks_zc<B: WireBuf>(buf: &mut B, c: &RecordsChunks) {
+    assert!(
+        c.len() <= i32::MAX as usize,
+        "records payload of {} bytes exceeds the wire limit of {}",
+        c.len(),
+        i32::MAX
+    );
+    put_i32(buf, c.len() as i32);
+    for chunk in c.chunks() {
+        buf.put_shared(chunk);
+    }
+}
+
+pub fn put_nullable_records_chunks_zc<B: WireBuf>(buf: &mut B, c: Option<&RecordsChunks>) {
+    match c {
+        None => put_i32(buf, -1),
+        Some(c) => put_records_chunks_zc(buf, c),
+    }
+}
+
+pub fn put_compact_records_chunks_zc<B: WireBuf>(buf: &mut B, c: &RecordsChunks) {
+    put_uvarint(buf, c.len() as u64 + 1);
+    for chunk in c.chunks() {
+        buf.put_shared(chunk);
+    }
+}
+
+pub fn put_compact_nullable_records_chunks_zc<B: WireBuf>(buf: &mut B, c: Option<&RecordsChunks>) {
+    match c {
+        None => put_uvarint(buf, 0),
+        Some(c) => put_compact_records_chunks_zc(buf, c),
+    }
 }
 
 pub fn put_tagged_fields<B: WireBuf>(buf: &mut B, fields: &[(u32, Bytes)]) {

@@ -182,7 +182,10 @@ fn main() -> Result<()> {
             continue;
         }
 
-        let code = generator::generate_message(&spec);
+        let mut code = generator::generate_message(&spec);
+        // Records-bearing messages additionally get Shell (chunked-payload)
+        // variants; empty for everything else.
+        code.push_str(&generator::generate_shell_code(&spec));
         let mod_name = spec.name.to_snake_case();
         let out_file = out_dir.join(format!("{}.rs", mod_name));
         fs::write(&out_file, code)?;
